@@ -11,7 +11,7 @@ export default async function Page() {
   const user = await getAuthenticatedUser();
 
   if (!user) {
-    redirect("/login?next=/");
+    redirect("/login?next=/analytics");
   }
 
   const dependencies = createDashboardDependencies({
@@ -25,7 +25,7 @@ export default async function Page() {
   return (
     <DashboardClientScreen
       initialViewModel={viewModel}
-      initialScreen="dashboard"
+      initialScreen="analytics"
       initialFrom={snapshot.range.from}
       initialTo={snapshot.range.to}
       userId={user.id}
