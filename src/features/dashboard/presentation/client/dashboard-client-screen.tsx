@@ -4,24 +4,29 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
 } from "react";
+
+import dynamic from "next/dynamic";
+import { useShallow } from "zustand/react/shallow";
 
 import {
   ActionFormDialog,
   type ActionFormDialogField,
   type ActionFormValues,
 } from "../components/action-form-dialog";
-import { DashboardScreen } from "../dashboard-screen";
-import { AnalyticsScreen } from "../screens/analytics-screen";
-import { GoalsScreen } from "../screens/goals-screen";
-import { SettingsScreen } from "../screens/settings-screen";
 import {
-  TransactionsScreen,
-  type TransactionFilter,
-} from "../screens/transactions-screen";
-import { WalletScreen } from "../screens/wallet-screen";
+  DEFAULT_PREFERENCES,
+  DEFAULT_PROFILE,
+  DEFAULT_TOGGLES,
+  createDashboardUiStore,
+  type ScreenId,
+  type SettingsPreferences,
+  type SettingsProfile,
+  type SettingsToggleId,
+} from "../state/dashboard-ui-store";
 import type { DashboardViewModel } from "../view-models/dashboard-view-model";
 import { getSupabaseBrowserClient } from "@/src/shared/supabase/browser-client";
 import {
@@ -29,34 +34,33 @@ import {
   whenLocale,
 } from "@/src/shared/i18n/locale";
 
-type ScreenId =
-  | "dashboard"
-  | "wallet"
-  | "transactions"
-  | "goals"
-  | "analytics"
-  | "settings";
+const DashboardScreen = dynamic(() =>
+  import("../dashboard-screen").then((module) => module.DashboardScreen),
+);
 
-type SettingsProfile = {
-  fullName: string;
-  email: string;
-  phone: string;
-  role: string;
-};
+const WalletScreen = dynamic(() =>
+  import("../screens/wallet-screen").then((module) => module.WalletScreen),
+);
 
-type SettingsPreferences = {
-  currency: string;
-  timezone: string;
-  language: string;
-  startOfWeek: "Monday" | "Sunday";
-};
+const TransactionsScreen = dynamic(() =>
+  import("../screens/transactions-screen").then(
+    (module) => module.TransactionsScreen,
+  ),
+);
 
-type SettingsToggles = Array<{
-  id: "email-alerts" | "push-notifications" | "monthly-report" | "compact-mode";
-  label: string;
-  description: string;
-  enabled: boolean;
-}>;
+const GoalsScreen = dynamic(() =>
+  import("../screens/goals-screen").then((module) => module.GoalsScreen),
+);
+
+const AnalyticsScreen = dynamic(() =>
+  import("../screens/analytics-screen").then(
+    (module) => module.AnalyticsScreen,
+  ),
+);
+
+const SettingsScreen = dynamic(() =>
+  import("../screens/settings-screen").then((module) => module.SettingsScreen),
+);
 
 type SnapshotApiData = {
   repositorySource: "supabase" | "static";
@@ -82,13 +86,6 @@ type UserSettingsRow = {
   compact_mode: boolean;
 };
 
-type ActionDialogId =
-  | "date-range"
-  | "add-funds"
-  | "add-transaction"
-  | "create-goal"
-  | "adjust-plan";
-
 type DashboardClientScreenProps = {
   initialViewModel: DashboardViewModel;
   initialScreen?: ScreenId;
@@ -97,47 +94,6 @@ type DashboardClientScreenProps = {
   userId?: string;
 };
 
-const DEFAULT_PROFILE: SettingsProfile = {
-  fullName: "Alex Morgan",
-  email: "alex.morgan@fintrack.app",
-  phone: "+1 (555) 812-2091",
-  role: "Owner",
-};
-
-const DEFAULT_PREFERENCES: SettingsPreferences = {
-  currency: "IDR",
-  timezone: "UTC+07:00 (Jakarta)",
-  language: "English (US)",
-  startOfWeek: "Monday",
-};
-
-const DEFAULT_TOGGLES: SettingsToggles = [
-  {
-    id: "email-alerts",
-    label: "Email alerts",
-    description: "Receive billing and account status updates by email.",
-    enabled: true,
-  },
-  {
-    id: "push-notifications",
-    label: "Push notifications",
-    description: "Get instant transaction and card activity notifications.",
-    enabled: true,
-  },
-  {
-    id: "monthly-report",
-    label: "Monthly report",
-    description: "Send a monthly PDF summary to your inbox.",
-    enabled: false,
-  },
-  {
-    id: "compact-mode",
-    label: "Compact mode",
-    description: "Use denser cards and table rows across dashboard screens.",
-    enabled: false,
-  },
-];
-
 export function DashboardClientScreen({
   initialViewModel,
   initialScreen = "dashboard",
@@ -145,30 +101,98 @@ export function DashboardClientScreen({
   initialTo,
   userId,
 }: DashboardClientScreenProps) {
-  const [screen] = useState<ScreenId>(initialScreen);
-  const [viewModel, setViewModel] = useState(initialViewModel);
-  const [range, setRange] = useState<{ from?: string; to?: string }>({
-    from: initialFrom,
-    to: initialTo,
-  });
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string>("");
-  const [transactionFilter, setTransactionFilter] =
-    useState<TransactionFilter>("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [openDialog, setOpenDialog] = useState<ActionDialogId | null>(null);
-  const [dialogError, setDialogError] = useState("");
-  const [adjustPlanGoalId, setAdjustPlanGoalId] = useState<string | null>(null);
+  const useDashboardUiStoreRef = useRef<ReturnType<
+    typeof createDashboardUiStore
+  > | null>(null);
 
-  const [profile, setProfile] = useState<SettingsProfile>(DEFAULT_PROFILE);
-  const [preferences, setPreferences] =
-    useState<SettingsPreferences>(DEFAULT_PREFERENCES);
-  const [toggles, setToggles] = useState<SettingsToggles>(DEFAULT_TOGGLES);
+  if (!useDashboardUiStoreRef.current) {
+    useDashboardUiStoreRef.current = createDashboardUiStore({
+      initialViewModel,
+      initialScreen,
+      initialFrom,
+      initialTo,
+    });
+  }
+
+  const useDashboardUiStore = useDashboardUiStoreRef.current;
+
+  const {
+    screen,
+    viewModel,
+    range,
+    busy,
+    message,
+    transactionFilter,
+    searchQuery,
+    openDialog,
+    dialogError,
+    adjustPlanGoalId,
+    profile,
+    preferences,
+    toggles,
+  } = useDashboardUiStore(
+    useShallow((state) => ({
+      screen: state.screen,
+      viewModel: state.viewModel,
+      range: state.range,
+      busy: state.busy,
+      message: state.message,
+      transactionFilter: state.transactionFilter,
+      searchQuery: state.searchQuery,
+      openDialog: state.openDialog,
+      dialogError: state.dialogError,
+      adjustPlanGoalId: state.adjustPlanGoalId,
+      profile: state.profile,
+      preferences: state.preferences,
+      toggles: state.toggles,
+    })),
+  );
+
+  const {
+    setViewModel,
+    setRange,
+    setBusy,
+    setMessage,
+    clearMessage,
+    setTransactionFilter,
+    setSearchQuery,
+    resetTransactionFilters,
+    openDialogById,
+    closeDialog,
+    setDialogError,
+    clearDialogError,
+    setAdjustPlanGoalId,
+    setProfile,
+    setPreferences,
+    setToggles,
+    togglePreference,
+  } = useDashboardUiStore(
+    useShallow((state) => ({
+      setViewModel: state.setViewModel,
+      setRange: state.setRange,
+      setBusy: state.setBusy,
+      setMessage: state.setMessage,
+      clearMessage: state.clearMessage,
+      setTransactionFilter: state.setTransactionFilter,
+      setSearchQuery: state.setSearchQuery,
+      resetTransactionFilters: state.resetTransactionFilters,
+      openDialogById: state.openDialogById,
+      closeDialog: state.closeDialog,
+      setDialogError: state.setDialogError,
+      clearDialogError: state.clearDialogError,
+      setAdjustPlanGoalId: state.setAdjustPlanGoalId,
+      setProfile: state.setProfile,
+      setPreferences: state.setPreferences,
+      setToggles: state.setToggles,
+      togglePreference: state.togglePreference,
+    })),
+  );
 
   const locale = useMemo(
     () => localeFromLanguagePreference(preferences.language, "en"),
     [preferences.language],
   );
+  const [showSlowSkeleton, setShowSlowSkeleton] = useState(false);
 
   const copy = useMemo(
     () =>
@@ -280,6 +304,21 @@ export function DashboardClientScreen({
   );
 
   useEffect(() => {
+    if (!busy) {
+      setShowSlowSkeleton(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setShowSlowSkeleton(true);
+    }, 1200);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [busy]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadSettingsFromSupabase() {
@@ -338,7 +377,7 @@ export function DashboardClientScreen({
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [setPreferences, setProfile, setToggles, userId]);
 
   const buildQuery = useCallback(
     (overrideRange?: { from?: string; to?: string }) => {
@@ -363,7 +402,7 @@ export function DashboardClientScreen({
       setViewModel(payload.viewModel);
       setRange(payload.range);
     },
-    [buildQuery],
+    [buildQuery, setRange, setViewModel],
   );
 
   const runAction = useCallback(
@@ -404,13 +443,20 @@ export function DashboardClientScreen({
         setBusy(false);
       }
     },
-    [copy.actionCompleted, copy.actionFailed, refreshSnapshot, userId],
+    [
+      copy.actionCompleted,
+      copy.actionFailed,
+      refreshSnapshot,
+      setBusy,
+      setMessage,
+      userId,
+    ],
   );
 
   const onSelectDateRange = useCallback(() => {
-    setDialogError("");
-    setOpenDialog("date-range");
-  }, []);
+    clearDialogError();
+    openDialogById("date-range");
+  }, [clearDialogError, openDialogById]);
 
   const onSubmitDateRange = useCallback(
     async (values: ActionFormValues) => {
@@ -423,13 +469,13 @@ export function DashboardClientScreen({
       };
 
       setBusy(true);
-      setMessage("");
-      setDialogError("");
+      clearMessage();
+      clearDialogError();
 
       try {
         await refreshSnapshot(nextRange);
         setMessage(copy.dateRangeUpdated);
-        setOpenDialog(null);
+        closeDialog();
       } catch (error) {
         const nextMessage =
           error instanceof Error ? error.message : copy.rangeUpdateFailed;
@@ -440,11 +486,17 @@ export function DashboardClientScreen({
       }
     },
     [
+      clearDialogError,
+      clearMessage,
+      closeDialog,
       copy.dateRangeUpdated,
       copy.rangeUpdateFailed,
       range.from,
       range.to,
       refreshSnapshot,
+      setBusy,
+      setDialogError,
+      setMessage,
     ],
   );
 
@@ -486,36 +538,41 @@ export function DashboardClientScreen({
     } finally {
       setBusy(false);
     }
-  }, [buildQuery, copy.exportFailed, copy.reportExported]);
+  }, [buildQuery, copy.exportFailed, copy.reportExported, setBusy, setMessage]);
 
   const onProfileChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       const { name, value } = event.target;
-      setProfile((prev) => ({ ...prev, [name]: value }));
+      setProfile({
+        ...profile,
+        [name]: value,
+      } as SettingsProfile);
     },
-    [],
+    [profile, setProfile],
   );
 
   const onPreferenceChange = useCallback(
     (event: ChangeEvent<HTMLSelectElement>) => {
       const { name, value } = event.target;
-      setPreferences((prev) => ({ ...prev, [name]: value }));
+      setPreferences({
+        ...preferences,
+        [name]: value,
+      } as SettingsPreferences);
     },
-    [],
+    [preferences, setPreferences],
   );
 
-  const onTogglePreference = useCallback((toggleId: string) => {
-    setToggles((prev) =>
-      prev.map((item) =>
-        item.id === toggleId ? { ...item, enabled: !item.enabled } : item,
-      ),
-    );
-  }, []);
+  const onTogglePreference = useCallback(
+    (toggleId: string) => {
+      togglePreference(toggleId as SettingsToggleId);
+    },
+    [togglePreference],
+  );
 
   const onAddFunds = useCallback(() => {
-    setDialogError("");
-    setOpenDialog("add-funds");
-  }, []);
+    clearDialogError();
+    openDialogById("add-funds");
+  }, [clearDialogError, openDialogById]);
 
   const onSubmitAddFunds = useCallback(
     async (values: ActionFormValues) => {
@@ -535,15 +592,15 @@ export function DashboardClientScreen({
         category,
         occurredAt: new Date().toISOString(),
       });
-      setOpenDialog(null);
+      closeDialog();
     },
-    [runAction],
+    [closeDialog, runAction, setDialogError],
   );
 
   const onAddTransaction = useCallback(() => {
-    setDialogError("");
-    setOpenDialog("add-transaction");
-  }, []);
+    clearDialogError();
+    openDialogById("add-transaction");
+  }, [clearDialogError, openDialogById]);
 
   const onSubmitAddTransaction = useCallback(
     async (values: ActionFormValues) => {
@@ -584,15 +641,15 @@ export function DashboardClientScreen({
         accountId,
         occurredAt: new Date().toISOString(),
       });
-      setOpenDialog(null);
+      closeDialog();
     },
-    [runAction],
+    [closeDialog, runAction, setDialogError],
   );
 
   const onCreateGoal = useCallback(() => {
-    setDialogError("");
-    setOpenDialog("create-goal");
-  }, []);
+    clearDialogError();
+    openDialogById("create-goal");
+  }, [clearDialogError, openDialogById]);
 
   const onSubmitCreateGoal = useCallback(
     async (values: ActionFormValues) => {
@@ -628,18 +685,18 @@ export function DashboardClientScreen({
         saved,
         deadline,
       });
-      setOpenDialog(null);
+      closeDialog();
     },
-    [runAction],
+    [closeDialog, runAction, setDialogError],
   );
 
   const onAdjustPlan = useCallback(
     (goalId?: string) => {
-      setDialogError("");
+      clearDialogError();
       setAdjustPlanGoalId(goalId ?? viewModel.goals[0]?.id ?? null);
-      setOpenDialog("adjust-plan");
+      openDialogById("adjust-plan");
     },
-    [viewModel.goals],
+    [clearDialogError, openDialogById, setAdjustPlanGoalId, viewModel.goals],
   );
 
   const onSubmitAdjustPlan = useCallback(
@@ -691,10 +748,10 @@ export function DashboardClientScreen({
         newTarget,
         newDeadline,
       });
-      setOpenDialog(null);
+      closeDialog();
       setAdjustPlanGoalId(null);
     },
-    [runAction],
+    [closeDialog, runAction, setAdjustPlanGoalId, setDialogError],
   );
 
   const onSaveSettings = useCallback(() => {
@@ -907,8 +964,7 @@ export function DashboardClientScreen({
           onFilterChangeAction={setTransactionFilter}
           onSearchChangeAction={(event) => setSearchQuery(event.target.value)}
           onResetFiltersAction={() => {
-            setTransactionFilter("all");
-            setSearchQuery("");
+            resetTransactionFilters();
           }}
           onAddTransactionAction={() => void onAddTransaction()}
           onSelectDateRangeAction={() => void onSelectDateRange()}
@@ -922,7 +978,6 @@ export function DashboardClientScreen({
           viewModel={viewModel}
           locale={locale}
           onCreateGoal={() => void onCreateGoal()}
-          onAdjustPlan={() => void onAdjustPlan()}
           onAdjustPlanForGoal={(goalId) => void onAdjustPlan(goalId)}
           onSelectDateRange={() => void onSelectDateRange()}
         />
@@ -963,7 +1018,9 @@ export function DashboardClientScreen({
 
       <ActionFormDialog
         open={openDialog === "date-range"}
-        onOpenChangeAction={(open) => setOpenDialog(open ? "date-range" : null)}
+        onOpenChangeAction={(open) =>
+          open ? openDialogById("date-range") : closeDialog()
+        }
         title={copy.selectDateRangeTitle}
         description={copy.selectDateRangeDescription}
         fields={dateRangeFields}
@@ -975,7 +1032,9 @@ export function DashboardClientScreen({
 
       <ActionFormDialog
         open={openDialog === "add-funds"}
-        onOpenChangeAction={(open) => setOpenDialog(open ? "add-funds" : null)}
+        onOpenChangeAction={(open) =>
+          open ? openDialogById("add-funds") : closeDialog()
+        }
         title={copy.addFundsTitle}
         description={copy.addFundsDescription}
         fields={addFundsFields}
@@ -988,7 +1047,7 @@ export function DashboardClientScreen({
       <ActionFormDialog
         open={openDialog === "add-transaction"}
         onOpenChangeAction={(open) =>
-          setOpenDialog(open ? "add-transaction" : null)
+          open ? openDialogById("add-transaction") : closeDialog()
         }
         title={copy.addTransactionTitle}
         description={copy.addTransactionDescription}
@@ -1002,7 +1061,7 @@ export function DashboardClientScreen({
       <ActionFormDialog
         open={openDialog === "create-goal"}
         onOpenChangeAction={(open) =>
-          setOpenDialog(open ? "create-goal" : null)
+          open ? openDialogById("create-goal") : closeDialog()
         }
         title={copy.createGoalTitle}
         description={copy.createGoalDescription}
@@ -1016,7 +1075,7 @@ export function DashboardClientScreen({
       <ActionFormDialog
         open={openDialog === "adjust-plan"}
         onOpenChangeAction={(open) =>
-          setOpenDialog(open ? "adjust-plan" : null)
+          open ? openDialogById("adjust-plan") : closeDialog()
         }
         title={copy.adjustPlanTitle}
         description={copy.adjustPlanDescription}
@@ -1029,7 +1088,18 @@ export function DashboardClientScreen({
 
       {(busy || message) && (
         <div className="fixed bottom-4 right-4 z-50 rounded-xl border border-border bg-surface px-3 py-2 text-xs text-foreground shadow-sm">
-          {busy ? copy.processing : message}
+          {busy ? (
+            showSlowSkeleton ? (
+              <div className="w-36 space-y-1.5">
+                <div className="h-2 w-full animate-pulse rounded bg-muted/40" />
+                <div className="h-2 w-4/5 animate-pulse rounded bg-muted/40" />
+              </div>
+            ) : (
+              copy.processing
+            )
+          ) : (
+            message
+          )}
         </div>
       )}
     </>

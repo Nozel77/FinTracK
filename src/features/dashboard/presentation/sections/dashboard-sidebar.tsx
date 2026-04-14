@@ -20,6 +20,8 @@ export type DashboardSidebarItem = {
   readonly isActive?: boolean;
 };
 
+type SidebarThemeMode = "light" | "dark";
+
 type DashboardSidebarProps = {
   readonly appName?: string;
   readonly items?: ReadonlyArray<DashboardSidebarItem>;
@@ -27,6 +29,8 @@ type DashboardSidebarProps = {
   readonly className?: string;
   readonly defaultCollapsed?: boolean;
   readonly onLogoutAction?: () => void;
+  readonly themeMode?: SidebarThemeMode;
+  readonly onThemeToggleAction?: () => void;
 };
 
 const defaultItems: ReadonlyArray<DashboardSidebarItem> = [
@@ -36,6 +40,7 @@ const defaultItems: ReadonlyArray<DashboardSidebarItem> = [
 ];
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "dashboard.sidebar.collapsed";
+const SIDEBAR_THEME_STORAGE_KEY = "dashboard.theme";
 
 const SIDEBAR_COPY = {
   en: {
@@ -43,6 +48,8 @@ const SIDEBAR_COPY = {
     primaryLabel: "Primary",
     expandSidebar: "Expand sidebar",
     collapseSidebar: "Collapse sidebar",
+    darkMode: "Dark mode",
+    lightMode: "Light mode",
     logout: "Logout",
     loggingOut: "Logging out...",
     dashboard: "Dashboard",
@@ -57,6 +64,8 @@ const SIDEBAR_COPY = {
     primaryLabel: "Utama",
     expandSidebar: "Perluas sidebar",
     collapseSidebar: "Ciutkan sidebar",
+    darkMode: "Mode gelap",
+    lightMode: "Mode terang",
     logout: "Keluar",
     loggingOut: "Sedang keluar...",
     dashboard: "Dasbor",
@@ -77,13 +86,19 @@ export function DashboardSidebar({
   className,
   defaultCollapsed = false,
   onLogoutAction,
+  themeMode,
+  onThemeToggleAction,
 }: DashboardSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [localThemeMode, setLocalThemeMode] =
+    useState<SidebarThemeMode>("light");
   const [hasLoadedPreference, setHasLoadedPreference] = useState(false);
   const [locale, setLocale] = useState<SidebarLocale>("en");
 
   const copy = useMemo(() => SIDEBAR_COPY[locale], [locale]);
+  const isThemeControlled = themeMode !== undefined;
+  const isDarkMode = (themeMode ?? localThemeMode) === "dark";
 
   useEffect(() => {
     try {
@@ -91,13 +106,24 @@ export function DashboardSidebar({
       if (stored === "true") setIsCollapsed(true);
       if (stored === "false") setIsCollapsed(false);
 
+      if (!isThemeControlled) {
+        const storedTheme = window.localStorage.getItem(
+          SIDEBAR_THEME_STORAGE_KEY,
+        );
+        if (storedTheme === "dark" || storedTheme === "light") {
+          setLocalThemeMode(storedTheme);
+        } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+          setLocalThemeMode("dark");
+        }
+      }
+
       const language = window.navigator.language.toLowerCase();
       if (language.startsWith("id")) setLocale("id");
       else setLocale("en");
     } finally {
       setHasLoadedPreference(true);
     }
-  }, []);
+  }, [isThemeControlled]);
 
   useEffect(() => {
     if (!hasLoadedPreference) return;
@@ -106,6 +132,14 @@ export function DashboardSidebar({
       isCollapsed ? "true" : "false",
     );
   }, [hasLoadedPreference, isCollapsed]);
+
+  useEffect(() => {
+    if (!hasLoadedPreference) return;
+    if (isThemeControlled) return;
+
+    window.localStorage.setItem(SIDEBAR_THEME_STORAGE_KEY, localThemeMode);
+    document.documentElement.dataset.theme = localThemeMode;
+  }, [hasLoadedPreference, isThemeControlled, localThemeMode]);
 
   async function handleLogout() {
     if (isLoggingOut) return;
@@ -182,6 +216,7 @@ export function DashboardSidebar({
               <li key={item.id}>
                 <Link
                   href={href}
+                  prefetch={true}
                   className={cn(
                     "group relative flex h-11 min-h-11 w-full rounded-xl text-sm font-medium transition-colors",
                     isCollapsed
@@ -221,14 +256,60 @@ export function DashboardSidebar({
         </ul>
       </nav>
 
-      <div className="mt-4 shrink-0 border-t border-border pt-4">
+      <div
+        className={cn(
+          "mt-4 shrink-0 border-t border-border pt-4",
+          isCollapsed ? "flex flex-col items-center" : "",
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            if (onThemeToggleAction) {
+              onThemeToggleAction();
+              return;
+            }
+
+            setLocalThemeMode((prev) => (prev === "dark" ? "light" : "dark"));
+          }}
+          className={cn(
+            "mb-2 flex h-11 min-h-11 rounded-xl text-sm font-medium text-muted transition-colors hover:bg-primary-soft hover:text-primary",
+            isCollapsed
+              ? "w-11 items-center justify-center px-0"
+              : "w-full items-center gap-3 px-3",
+          )}
+          aria-label={
+            isCollapsed
+              ? isDarkMode
+                ? copy.lightMode
+                : copy.darkMode
+              : undefined
+          }
+          title={
+            isCollapsed
+              ? isDarkMode
+                ? copy.lightMode
+                : copy.darkMode
+              : undefined
+          }
+        >
+          <span className="grid size-6 place-items-center" aria-hidden>
+            <ThemeModeIcon isDarkMode={isDarkMode} />
+          </span>
+          {!isCollapsed ? (
+            <span>{isDarkMode ? copy.lightMode : copy.darkMode}</span>
+          ) : null}
+        </button>
+
         <button
           type="button"
           onClick={() => void handleLogout()}
           disabled={isLoggingOut}
           className={cn(
-            "flex h-11 min-h-11 w-full rounded-xl text-sm font-medium text-muted transition-colors hover:bg-primary-soft hover:text-primary",
-            isCollapsed ? "justify-center px-2" : "items-center gap-3 px-3",
+            "flex h-11 min-h-11 rounded-xl text-sm font-medium text-muted transition-colors hover:bg-primary-soft hover:text-primary",
+            isCollapsed
+              ? "w-11 items-center justify-center px-0"
+              : "w-full items-center gap-3 px-3",
             isLoggingOut ? "cursor-not-allowed opacity-60" : "",
           )}
           aria-label={isCollapsed ? copy.logout : undefined}
@@ -396,6 +477,82 @@ function TargetIcon() {
         strokeWidth="1.5"
       />
       <circle cx="10" cy="10" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function ThemeModeIcon({ isDarkMode }: { readonly isDarkMode: boolean }) {
+  if (isDarkMode) {
+    return (
+      <svg viewBox="0 0 20 20" className="size-5" fill="none" aria-hidden>
+        <path
+          d="M13.75 12.5A5 5 0 0 1 7.5 6.25A5 5 0 1 0 13.75 12.5Z"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 20 20" className="size-5" fill="none" aria-hidden>
+      <circle
+        cx="10"
+        cy="10"
+        r="3.25"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M10 2.75V4.25"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M10 15.75V17.25"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M2.75 10H4.25"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M15.75 10H17.25"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M4.88 4.88L5.94 5.94"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M14.06 14.06L15.12 15.12"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M14.06 5.94L15.12 4.88"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M4.88 15.12L5.94 14.06"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

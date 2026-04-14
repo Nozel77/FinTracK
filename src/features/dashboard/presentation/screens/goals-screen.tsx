@@ -14,7 +14,6 @@ export type GoalsScreenProps = {
   readonly viewModel: DashboardViewModel;
   readonly locale?: Locale;
   readonly onCreateGoal?: MouseEventHandler<HTMLButtonElement>;
-  readonly onAdjustPlan?: MouseEventHandler<HTMLButtonElement>;
   readonly onAdjustPlanForGoal?: (goalId: string) => void;
   readonly onSelectDateRange?: MouseEventHandler<HTMLButtonElement>;
 };
@@ -52,7 +51,6 @@ export function GoalsScreen({
   viewModel,
   locale = "id",
   onCreateGoal,
-  onAdjustPlan,
   onAdjustPlanForGoal,
   onSelectDateRange,
 }: GoalsScreenProps) {
@@ -61,7 +59,6 @@ export function GoalsScreen({
       title: "Goals",
       subtitle: "Focus on goals that need action now.",
       badgeLabel: "Execution mode",
-      adjustPlan: "Adjust plan",
       createGoal: "Create goal",
       totalGoals: "Total goals",
       atRiskGoals: "At-risk goals",
@@ -86,7 +83,6 @@ export function GoalsScreen({
       title: "Tujuan",
       subtitle: "Fokus pada tujuan yang perlu tindakan sekarang.",
       badgeLabel: "Mode eksekusi",
-      adjustPlan: "Sesuaikan rencana",
       createGoal: "Buat tujuan",
       totalGoals: "Total tujuan",
       atRiskGoals: "Tujuan berisiko",
@@ -165,12 +161,7 @@ export function GoalsScreen({
             tone="outline"
             onClick={onSelectDateRange}
           />
-          <ActionPill
-            label={copy.adjustPlan}
-            icon={<PlanIcon />}
-            tone="outline"
-            onClick={onAdjustPlan}
-          />
+
           <ActionPill
             label={copy.createGoal}
             icon={<PlusIcon />}
@@ -416,24 +407,6 @@ function CalendarIcon() {
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function PlanIcon() {
-  return (
-    <svg className="size-5" viewBox="0 0 20 20" fill="none" aria-hidden>
-      <path
-        d="M4.5 15.5V5.75C4.5 5.06 5.06 4.5 5.75 4.5H14.25C14.94 4.5 15.5 5.06 15.5 5.75V15.5M7 8H13M7 11H13"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      <path
-        d="M7 15.5V13.5C7 12.95 7.45 12.5 8 12.5H12C12.55 12.5 13 12.95 13 13.5V15.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
       />
     </svg>
   );

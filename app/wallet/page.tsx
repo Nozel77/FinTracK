@@ -1,5 +1,6 @@
 import { createDashboardDependencies } from "@/src/features/dashboard/infrastructure/dashboard-dependencies";
 import { DashboardClientScreen } from "@/src/features/dashboard/presentation/client/dashboard-client-screen";
+import { toDashboardViewModel } from "@/src/features/dashboard/presentation/view-models/dashboard-view-model";
 import { resolveAuthorizedUserId } from "@/src/shared/supabase/authorization";
 
 export const dynamic = "force-dynamic";
@@ -23,14 +24,18 @@ export default async function Page({ searchParams }: WalletPageProps) {
     supabaseUserId: authenticatedUserId,
   });
 
-  const viewModel = await dependencies.loadDashboardViewModel({ from, to });
+  const snapshot = await dependencies.getDashboardSnapshot.execute({
+    from,
+    to,
+  });
+  const viewModel = toDashboardViewModel(snapshot);
 
   return (
     <DashboardClientScreen
       initialViewModel={viewModel}
       initialScreen="wallet"
-      initialFrom={from}
-      initialTo={to}
+      initialFrom={snapshot.range.from}
+      initialTo={snapshot.range.to}
       userId={authenticatedUserId}
     />
   );

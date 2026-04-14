@@ -1,4 +1,12 @@
-import type { CSSProperties, ReactNode } from "react";
+"use client";
+
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import {
   DashboardSidebar,
@@ -34,6 +42,24 @@ export type SidebarPageShellProps = {
 };
 
 type CSSVariables = CSSProperties & Partial<Record<`--${string}`, string>>;
+type SidebarThemeMode = "light" | "dark";
+
+const THEME_MODE_STORAGE_KEY = "dashboard.theme";
+
+const DARK_THEME_VARS: CSSVariables = {
+  "--background": "#0b1220",
+  "--foreground": "#e2e8f0",
+  "--surface": "#111827",
+  "--surface-2": "#1f2937",
+  "--border": "#334155",
+  "--muted": "#94a3b8",
+  "--primary": "#60a5fa",
+  "--primary-hover": "#3b82f6",
+  "--primary-soft": "#1e3a8a",
+  "--accent": "#38bdf8",
+  "--success": "#22c55e",
+  "--danger": "#f87171",
+};
 
 export function SidebarPageShell({
   activeSidebarItemId,
@@ -47,7 +73,31 @@ export function SidebarPageShell({
   contentClassName,
   sidebarClassName,
 }: SidebarPageShellProps) {
-  const themedStyle = toThemeVariables(themeOverrides);
+  const [themeMode, setThemeMode] = useState<SidebarThemeMode>(() => {
+    if (typeof window === "undefined") return "light";
+
+    const stored = window.localStorage.getItem(THEME_MODE_STORAGE_KEY);
+    if (stored === "light" || stored === "dark") return stored;
+
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(THEME_MODE_STORAGE_KEY, themeMode);
+    document.documentElement.dataset.theme = themeMode;
+  }, [themeMode]);
+
+  const handleThemeToggleAction = () => {
+    setThemeMode((previous) => (previous === "dark" ? "light" : "dark"));
+  };
+
+  const themedStyle = useMemo(
+    () => toThemeVariables(themeOverrides, themeMode),
+    [themeOverrides, themeMode],
+  );
 
   return (
     <div
@@ -55,6 +105,7 @@ export function SidebarPageShell({
         "h-screen w-screen overflow-hidden bg-background text-foreground",
         className,
       )}
+      data-theme={themeMode}
       style={themedStyle}
     >
       <main className="h-full w-full overflow-y-auto bg-background p-4 sm:p-6">
@@ -65,6 +116,8 @@ export function SidebarPageShell({
               "hidden lg:fixed lg:left-6 lg:top-6 lg:flex lg:h-[calc(100vh-3rem)]",
               sidebarClassName,
             )}
+            themeMode={themeMode}
+            onThemeToggleAction={handleThemeToggleAction}
           />
 
           <section
@@ -110,25 +163,29 @@ export function SidebarPageShell({
 
 function toThemeVariables(
   overrides?: SidebarPageThemeOverrides,
+  themeMode: SidebarThemeMode = "light",
 ): CSSVariables | undefined {
-  if (!overrides) return undefined;
-
   const vars: CSSVariables = {};
 
-  if (overrides.background) vars["--background"] = overrides.background;
-  if (overrides.foreground) vars["--foreground"] = overrides.foreground;
-  if (overrides.surface) vars["--surface"] = overrides.surface;
-  if (overrides.surface2) vars["--surface-2"] = overrides.surface2;
-  if (overrides.border) vars["--border"] = overrides.border;
-  if (overrides.muted) vars["--muted"] = overrides.muted;
-  if (overrides.primary) vars["--primary"] = overrides.primary;
-  if (overrides.primaryHover) vars["--primary-hover"] = overrides.primaryHover;
-  if (overrides.primarySoft) vars["--primary-soft"] = overrides.primarySoft;
-  if (overrides.accent) vars["--accent"] = overrides.accent;
-  if (overrides.success) vars["--success"] = overrides.success;
-  if (overrides.danger) vars["--danger"] = overrides.danger;
+  if (themeMode === "dark") {
+    Object.assign(vars, DARK_THEME_VARS);
+  } else if (overrides) {
+    if (overrides.background) vars["--background"] = overrides.background;
+    if (overrides.foreground) vars["--foreground"] = overrides.foreground;
+    if (overrides.surface) vars["--surface"] = overrides.surface;
+    if (overrides.surface2) vars["--surface-2"] = overrides.surface2;
+    if (overrides.border) vars["--border"] = overrides.border;
+    if (overrides.muted) vars["--muted"] = overrides.muted;
+    if (overrides.primary) vars["--primary"] = overrides.primary;
+    if (overrides.primaryHover)
+      vars["--primary-hover"] = overrides.primaryHover;
+    if (overrides.primarySoft) vars["--primary-soft"] = overrides.primarySoft;
+    if (overrides.accent) vars["--accent"] = overrides.accent;
+    if (overrides.success) vars["--success"] = overrides.success;
+    if (overrides.danger) vars["--danger"] = overrides.danger;
+  }
 
-  return vars;
+  return Object.keys(vars).length > 0 ? vars : undefined;
 }
 
 function cx(...classNames: Array<string | false | null | undefined>): string {
