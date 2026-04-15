@@ -45,14 +45,8 @@ export function WeeklyTrendSection({
     <DashboardCard title={copy.title} subtitle={copy.subtitle}>
       <div className="space-y-4">
         <div className="flex items-center gap-4 text-xs text-[var(--muted)]">
-          <Legend
-            colorClassName="bg-[var(--primary)]"
-            label={copy.incomeLabel}
-          />
-          <Legend
-            colorClassName="bg-[var(--blue-400)]"
-            label={copy.expenseLabel}
-          />
+          <Legend colorClassName="bg-green-500" label={copy.incomeLabel} />
+          <Legend colorClassName="bg-red-500" label={copy.expenseLabel} />
         </div>
 
         <ul className="grid grid-cols-7 gap-3">
@@ -67,13 +61,13 @@ export function WeeklyTrendSection({
               >
                 <div className="flex h-36 w-full items-end justify-center gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-1 py-2">
                   <div
-                    className="w-2 rounded-full bg-[var(--primary)]"
+                    className="w-2 rounded-full bg-green-500"
                     style={{ height: `${incomeHeight}%` }}
                     title={`${copy.incomeLabel} ${item.incomeLabel}`}
                     aria-label={`${item.label} ${copy.incomeAria} ${item.incomeLabel}`}
                   />
                   <div
-                    className="w-2 rounded-full bg-[var(--blue-400)]"
+                    className="w-2 rounded-full bg-red-500"
                     style={{ height: `${expenseHeight}%` }}
                     title={`${copy.expenseLabel} ${item.expenseLabel}`}
                     aria-label={`${item.label} ${copy.expenseAria} ${item.expenseLabel}`}

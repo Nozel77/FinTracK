@@ -62,12 +62,10 @@ type AdjustPlanInput = {
   readonly goalId: string;
   readonly addSavedAmount?: number;
   /**
-   * Deprecated: this field is intentionally ignored by the service because it
+   * Deprecated: this field is intentionally rejected by the service because it
    * implies scheduled automation that does not exist.
    */
   readonly monthlyContribution?: number;
-  readonly newTarget?: number;
-  readonly newDeadline?: string;
 };
 
 type SaveSettingsInput = {
@@ -83,6 +81,7 @@ type SaveSettingsInput = {
     readonly timezone?: string;
     readonly language?: string;
     readonly startOfWeek?: StartOfWeek;
+    readonly dailyTransactionLimit?: number;
   };
   readonly toggles?: {
     readonly emailAlerts?: boolean;
@@ -95,6 +94,7 @@ type SaveSettingsInput = {
 const DEFAULT_CURRENCY = "IDR";
 const DEFAULT_TIMEZONE = "UTC+07:00 (Jakarta)";
 const DEFAULT_LANGUAGE = "English (US)";
+const DEFAULT_DAILY_TRANSACTION_LIMIT = 10_000_000;
 
 export class DashboardActionService {
   private readonly userId?: string;
@@ -133,6 +133,10 @@ export class DashboardActionService {
     const amount = assertPositiveAmount(input.amount, "amount");
     const context = await this.getContext(input.userId);
     const occurredAt = normalizeISODateTime(input.occurredAt);
+
+    if (input.direction === "expense") {
+      await this.assertWithinDailyExpenseLimit(context, amount, occurredAt);
+    }
 
     const transactionId = await this.insertTransaction(context, {
       title: input.title,
@@ -215,20 +219,29 @@ export class DashboardActionService {
       );
     }
 
-    const increment = clampNonNegative(input.addSavedAmount ?? 0);
+    const legacyPayload = input as Record<string, unknown>;
+
+    if (legacyPayload.newTarget !== undefined) {
+      throw new Error(
+        '[dashboard-action-service] "newTarget" is no longer supported. Goal adjustment only allows incrementing "addSavedAmount".',
+      );
+    }
+
+    if (legacyPayload.newDeadline !== undefined) {
+      throw new Error(
+        '[dashboard-action-service] "newDeadline" is no longer supported. Goal adjustment only allows incrementing "addSavedAmount".',
+      );
+    }
+
+    const increment = assertPositiveAmount(
+      input.addSavedAmount ?? Number.NaN,
+      "addSavedAmount",
+    );
 
     const update: Updates<"financial_goals"> = {
       saved: currentGoal.saved + increment,
       updated_at: nowIso(),
     };
-
-    if (typeof input.newTarget === "number") {
-      update.target = assertPositiveAmount(input.newTarget, "newTarget");
-    }
-
-    if (input.newDeadline) {
-      update.deadline = normalizeISODate(input.newDeadline);
-    }
 
     const { data: updatedGoal, error: updateError } = await context.client
       .from("financial_goals")
@@ -268,6 +281,10 @@ export class DashboardActionService {
       );
     }
 
+    const existingWithDailyLimit = existing as
+      | (typeof existing & { daily_transaction_limit?: number | null })
+      | null;
+
     const payload: Inserts<"user_settings"> = {
       user_id: context.userId,
       full_name:
@@ -301,9 +318,19 @@ export class DashboardActionService {
       updated_at: nowIso(),
     };
 
+    const payloadWithDailyLimit = payload as Inserts<"user_settings"> & {
+      daily_transaction_limit?: number;
+    };
+
+    payloadWithDailyLimit.daily_transaction_limit =
+      resolveDailyTransactionLimit(
+        input.preferences?.dailyTransactionLimit,
+        existingWithDailyLimit?.daily_transaction_limit,
+      );
+
     const { error: upsertError } = await context.client
       .from("user_settings")
-      .upsert(payload, { onConflict: "user_id" });
+      .upsert(payloadWithDailyLimit, { onConflict: "user_id" });
 
     if (upsertError) {
       throw new Error(
@@ -376,19 +403,29 @@ export class DashboardActionService {
     return data.id;
   }
 
-  private async incrementDailyExpenseLimit(
+  private async assertWithinDailyExpenseLimit(
     context: ServiceContext,
     amount: number,
     occurredAt: string,
   ): Promise<void> {
     const date = occurredAt.slice(0, 10);
 
-    const { data: existing, error: readError } = await context.client
-      .from("daily_transaction_limits")
-      .select("*")
-      .eq("user_id", context.userId)
-      .eq("date", date)
-      .maybeSingle();
+    const [
+      { data: existing, error: readError },
+      { data: settings, error: settingsError },
+    ] = await Promise.all([
+      context.client
+        .from("daily_transaction_limits")
+        .select("*")
+        .eq("user_id", context.userId)
+        .eq("date", date)
+        .maybeSingle(),
+      context.client
+        .from("user_settings")
+        .select("daily_transaction_limit")
+        .eq("user_id", context.userId)
+        .maybeSingle(),
+    ]);
 
     if (readError) {
       throw new Error(
@@ -396,12 +433,79 @@ export class DashboardActionService {
       );
     }
 
+    if (settingsError) {
+      throw new Error(
+        `[dashboard-action-service] daily limit settings read failed: ${settingsError.message}`,
+      );
+    }
+
+    const configuredLimit =
+      typeof settings?.daily_transaction_limit === "number" &&
+      Number.isFinite(settings.daily_transaction_limit) &&
+      settings.daily_transaction_limit > 0
+        ? settings.daily_transaction_limit
+        : DEFAULT_DAILY_TRANSACTION_LIMIT;
+
+    const usedToday = existing?.used ?? 0;
+    const nextUsed = usedToday + amount;
+
+    if (nextUsed > configuredLimit) {
+      const remaining = Math.max(0, configuredLimit - usedToday);
+      throw new Error(
+        `[dashboard-action-service] Daily expense limit exceeded. Remaining daily limit: ${remaining}.`,
+      );
+    }
+  }
+
+  private async incrementDailyExpenseLimit(
+    context: ServiceContext,
+    amount: number,
+    occurredAt: string,
+  ): Promise<void> {
+    const date = occurredAt.slice(0, 10);
+
+    const [
+      { data: existing, error: readError },
+      { data: settings, error: settingsError },
+    ] = await Promise.all([
+      context.client
+        .from("daily_transaction_limits")
+        .select("*")
+        .eq("user_id", context.userId)
+        .eq("date", date)
+        .maybeSingle(),
+      context.client
+        .from("user_settings")
+        .select("daily_transaction_limit")
+        .eq("user_id", context.userId)
+        .maybeSingle(),
+    ]);
+
+    if (readError) {
+      throw new Error(
+        `[dashboard-action-service] daily limit read failed: ${readError.message}`,
+      );
+    }
+
+    if (settingsError) {
+      throw new Error(
+        `[dashboard-action-service] daily limit settings read failed: ${settingsError.message}`,
+      );
+    }
+
+    const configuredLimit =
+      typeof settings?.daily_transaction_limit === "number" &&
+      Number.isFinite(settings.daily_transaction_limit) &&
+      settings.daily_transaction_limit > 0
+        ? settings.daily_transaction_limit
+        : DEFAULT_DAILY_TRANSACTION_LIMIT;
+
     if (!existing) {
       const payload: Inserts<"daily_transaction_limits"> = {
         user_id: context.userId,
         date,
         used: amount,
-        limit: Math.max(amount, 10_000_000),
+        limit: configuredLimit,
         currency: DEFAULT_CURRENCY,
         updated_at: nowIso(),
       };
@@ -425,6 +529,7 @@ export class DashboardActionService {
       .from("daily_transaction_limits")
       .update({
         used: nextUsed,
+        limit: configuredLimit,
         updated_at: nowIso(),
       })
       .eq("id", existing.id);
@@ -501,6 +606,21 @@ function assertPositiveAmount(value: number, fieldName: string): number {
 function clampNonNegative(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, value);
+}
+
+function resolveDailyTransactionLimit(
+  inputLimit: number | undefined,
+  existingLimit: number | null | undefined,
+): number {
+  if (inputLimit !== undefined) {
+    return assertPositiveAmount(inputLimit, "dailyTransactionLimit");
+  }
+
+  if (typeof existingLimit === "number") {
+    return assertPositiveAmount(existingLimit, "dailyTransactionLimit");
+  }
+
+  return DEFAULT_DAILY_TRANSACTION_LIMIT;
 }
 
 function normalizeISODate(value: string): string {

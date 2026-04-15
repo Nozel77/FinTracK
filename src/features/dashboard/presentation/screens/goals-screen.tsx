@@ -1,14 +1,15 @@
-import type { MouseEventHandler } from "react";
+import { useState, type MouseEventHandler } from "react";
 
 import { ActionPill } from "../components/action-pill";
 import { DashboardCard } from "../components/dashboard-card";
 import { GoalItem } from "../components/goal-item";
+import { PaginationControls } from "../components/pagination-controls";
 import {
   SidebarPageShell,
   type SidebarPageThemeOverrides,
 } from "./sidebar-page-shell";
 import type { DashboardViewModel } from "../view-models/dashboard-view-model";
-import { whenLocale, type Locale } from "@/src/shared/i18n/locale";
+import type { Locale } from "@/src/shared/i18n/locale";
 
 export type GoalsScreenProps = {
   readonly viewModel: DashboardViewModel;
@@ -49,63 +50,39 @@ const ACTION_WINDOW_DAYS = 90;
 
 export function GoalsScreen({
   viewModel,
-  locale = "id",
+  locale: _locale = "id",
   onCreateGoal,
   onAdjustPlanForGoal,
   onSelectDateRange,
 }: GoalsScreenProps) {
-  const copy = whenLocale(locale, {
-    en: {
-      title: "Goals",
-      subtitle: "Focus on goals that need action now.",
-      badgeLabel: "Execution mode",
-      createGoal: "Create goal",
-      totalGoals: "Total goals",
-      atRiskGoals: "At-risk goals",
-      dueSoon: "Due in 30 days",
-      monthlyNeed: "Needed this month",
-      actionQueueTitle: "Action queue",
-      actionQueueSubtitle:
-        "Prioritized goals likely to miss target without immediate action.",
-      noActionableGoals:
-        "No at-risk goals right now. Keep momentum and review after your next update.",
-      deadline: "Deadline",
-      requiredPerMonth: "Required / month",
-      addThisMonth: "Add this month",
-      overdue: "Overdue",
-      dueSoonBadge: "Due soon",
-      onTrack: "On track",
-      allGoalsTitle: "All goals",
-      allGoalsSubtitle: "Full list and current progress",
-      noGoalsDisplay: "No goals yet. Create your first goal.",
-    },
-    id: {
-      title: "Tujuan",
-      subtitle: "Fokus pada tujuan yang perlu tindakan sekarang.",
-      badgeLabel: "Mode eksekusi",
-      createGoal: "Buat tujuan",
-      totalGoals: "Total tujuan",
-      atRiskGoals: "Tujuan berisiko",
-      dueSoon: "Jatuh tempo 30 hari",
-      monthlyNeed: "Kebutuhan bulan ini",
-      actionQueueTitle: "Daftar tindakan",
-      actionQueueSubtitle:
-        "Tujuan prioritas yang berpotensi meleset tanpa aksi segera.",
-      noActionableGoals:
-        "Saat ini tidak ada tujuan berisiko. Pertahankan ritme dan tinjau lagi setelah update berikutnya.",
-      deadline: "Tenggat",
-      requiredPerMonth: "Perlu / bulan",
-      addThisMonth: "Tambahkan bulan ini",
-      overdue: "Lewat tenggat",
-      dueSoonBadge: "Segera jatuh tempo",
-      onTrack: "On track",
-      allGoalsTitle: "Semua tujuan",
-      allGoalsSubtitle: "Daftar lengkap dan progres terkini",
-      noGoalsDisplay: "Belum ada tujuan. Buat tujuan pertama Anda.",
-    },
-  });
+  const copy = {
+    title: "Tujuan",
+    subtitle: "Fokus pada tujuan yang perlu tindakan sekarang.",
+    badgeLabel: "Mode eksekusi",
+    createGoal: "Buat tujuan",
+    totalGoals: "Total tujuan",
+    atRiskGoals: "Tujuan berisiko",
+    dueSoon: "Jatuh tempo 30 hari",
+    monthlyNeed: "Kebutuhan bulan ini",
+    actionQueueTitle: "Daftar tindakan",
+    actionQueueSubtitle:
+      "Tujuan prioritas yang berpotensi meleset tanpa aksi segera.",
+    noActionableGoals:
+      "Saat ini tidak ada tujuan berisiko. Pertahankan ritme dan tinjau lagi setelah update berikutnya.",
+    deadline: "Tenggat",
+    requiredPerMonth: "Perlu / bulan",
+    addThisMonth: "Tambahkan bulan ini",
+    overdue: "Terlambat",
+    dueSoonBadge: "Jatuh tempo dekat",
+    onTrack: "Sesuai rencana",
+    allGoalsTitle: "Semua tujuan",
+    allGoalsSubtitle: "Daftar lengkap dan progres terkini",
+    noGoalsDisplay: "Belum ada tujuan. Buat tujuan pertama Anda.",
+  };
 
   const goals = viewModel.goals;
+  const [actionQueuePage, setActionQueuePage] = useState(1);
+  const [allGoalsPage, setAllGoalsPage] = useState(1);
   const activeGoals = goals.filter((goal) => goal.progressPct < 100);
 
   const actionableGoals = activeGoals
@@ -131,6 +108,35 @@ export function GoalsScreen({
     })
     .filter((goal) => goal.daysUntilDeadline <= ACTION_WINDOW_DAYS)
     .sort((a, b) => b.urgencyScore - a.urgencyScore);
+
+  const actionQueuePageSize = 5;
+  const actionQueueTotalPages = Math.max(
+    1,
+    Math.ceil(actionableGoals.length / actionQueuePageSize),
+  );
+  const actionQueueCurrentPage = clamp(
+    actionQueuePage,
+    1,
+    actionQueueTotalPages,
+  );
+  const actionQueueStartIndex =
+    (actionQueueCurrentPage - 1) * actionQueuePageSize;
+  const pagedActionableGoals = actionableGoals.slice(
+    actionQueueStartIndex,
+    actionQueueStartIndex + actionQueuePageSize,
+  );
+
+  const allGoalsPageSize = 5;
+  const allGoalsTotalPages = Math.max(
+    1,
+    Math.ceil(goals.length / allGoalsPageSize),
+  );
+  const allGoalsCurrentPage = clamp(allGoalsPage, 1, allGoalsTotalPages);
+  const allGoalsStartIndex = (allGoalsCurrentPage - 1) * allGoalsPageSize;
+  const pagedGoals = goals.slice(
+    allGoalsStartIndex,
+    allGoalsStartIndex + allGoalsPageSize,
+  );
 
   const dueIn30DaysCount = activeGoals.filter((goal) => {
     const days = daysUntil(goal.deadlineISO);
@@ -202,87 +208,97 @@ export function GoalsScreen({
           {actionableGoals.length === 0 ? (
             <EmptyMessage text={copy.noActionableGoals} />
           ) : (
-            <ul className="space-y-3">
-              {actionableGoals.map((goal) => {
-                const status =
-                  goal.daysUntilDeadline < 0
-                    ? copy.overdue
-                    : goal.daysUntilDeadline <= 30
-                      ? copy.dueSoonBadge
-                      : copy.onTrack;
+            <div className="space-y-4">
+              <ul className="space-y-3">
+                {pagedActionableGoals.map((goal) => {
+                  const status =
+                    goal.daysUntilDeadline < 0
+                      ? copy.overdue
+                      : goal.daysUntilDeadline <= 30
+                        ? copy.dueSoonBadge
+                        : copy.onTrack;
 
-                const statusClassName =
-                  goal.daysUntilDeadline < 0
-                    ? "bg-red-500/10 text-red-600"
-                    : goal.daysUntilDeadline <= 30
-                      ? "bg-amber-500/10 text-amber-700"
-                      : "bg-emerald-500/10 text-emerald-700";
+                  const statusClassName =
+                    goal.daysUntilDeadline < 0
+                      ? "bg-red-500/10 text-red-600"
+                      : goal.daysUntilDeadline <= 30
+                        ? "bg-amber-500/10 text-amber-700"
+                        : "bg-emerald-500/10 text-emerald-700";
 
-                return (
-                  <li
-                    key={goal.id}
-                    className="rounded-2xl border border-border bg-surface-2 p-4"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-foreground">
-                          {goal.name}
-                        </p>
-                        <p className="mt-1 text-xs text-muted">
-                          {copy.deadline}: {goal.deadlineLabel}
-                        </p>
-                      </div>
-                      <span
-                        className={cn(
-                          "rounded-full px-2.5 py-1 text-[11px] font-semibold",
-                          statusClassName,
-                        )}
-                      >
-                        {status}
-                      </span>
-                    </div>
-
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      <div className="rounded-xl border border-border bg-surface px-3 py-2">
-                        <p className="text-[11px] text-muted">
-                          {copy.requiredPerMonth}
-                        </p>
-                        <p className="text-sm font-semibold text-primary">
-                          {formatIdr(goal.requiredMonthly)}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-border bg-surface px-3 py-2">
-                        <p className="text-[11px] text-muted">
-                          {copy.addThisMonth}
-                        </p>
-                        <p className="text-sm font-semibold text-foreground">
-                          {formatIdr(goal.requiredMonthly)}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-3">
-                      <div className="mb-1 flex items-center justify-between text-[11px] text-muted">
-                        <span>
-                          {goal.savedLabel} / {goal.targetLabel}
-                        </span>
-                        <span>
-                          {Math.round(clamp(goal.progressPct, 0, 100))}%
+                  return (
+                    <li
+                      key={goal.id}
+                      className="rounded-2xl border border-border bg-surface-2 p-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-foreground">
+                            {goal.name}
+                          </p>
+                          <p className="mt-1 text-xs text-muted">
+                            {copy.deadline}: {goal.deadlineLabel}
+                          </p>
+                        </div>
+                        <span
+                          className={cn(
+                            "rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                            statusClassName,
+                          )}
+                        >
+                          {status}
                         </span>
                       </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-primary-soft">
-                        <div
-                          className="h-full rounded-full bg-primary"
-                          style={{
-                            width: `${clamp(goal.progressPct, 0, 100)}%`,
-                          }}
-                        />
+
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <div className="rounded-xl border border-border bg-surface px-3 py-2">
+                          <p className="text-[11px] text-muted">
+                            {copy.requiredPerMonth}
+                          </p>
+                          <p className="text-sm font-semibold text-primary">
+                            {formatIdr(goal.requiredMonthly)}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-border bg-surface px-3 py-2">
+                          <p className="text-[11px] text-muted">
+                            {copy.addThisMonth}
+                          </p>
+                          <p className="text-sm font-semibold text-foreground">
+                            {formatIdr(goal.requiredMonthly)}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+
+                      <div className="mt-3">
+                        <div className="mb-1 flex items-center justify-between text-[11px] text-muted">
+                          <span>
+                            {goal.savedLabel} / {goal.targetLabel}
+                          </span>
+                          <span>
+                            {Math.round(clamp(goal.progressPct, 0, 100))}%
+                          </span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-primary-soft">
+                          <div
+                            className="h-full rounded-full bg-primary"
+                            style={{
+                              width: `${clamp(goal.progressPct, 0, 100)}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+
+              <PaginationControls
+                page={actionQueueCurrentPage}
+                pageSize={actionQueuePageSize}
+                totalItems={actionableGoals.length}
+                onPageChangeAction={setActionQueuePage}
+                locale={_locale}
+              />
+            </div>
           )}
         </DashboardCard>
 
@@ -293,15 +309,25 @@ export function GoalsScreen({
           {goals.length === 0 ? (
             <EmptyMessage text={copy.noGoalsDisplay} />
           ) : (
-            <ul role="list" className="divide-y divide-border">
-              {goals.map((goal) => (
-                <GoalItem
-                  key={goal.id}
-                  goal={goal}
-                  onAdjustPlanAction={handleAdjustPlanForGoal}
-                />
-              ))}
-            </ul>
+            <div className="space-y-4">
+              <ul role="list" className="divide-y divide-border">
+                {pagedGoals.map((goal) => (
+                  <GoalItem
+                    key={goal.id}
+                    goal={goal}
+                    onAdjustPlanAction={handleAdjustPlanForGoal}
+                  />
+                ))}
+              </ul>
+
+              <PaginationControls
+                page={allGoalsCurrentPage}
+                pageSize={allGoalsPageSize}
+                totalItems={goals.length}
+                onPageChangeAction={setAllGoalsPage}
+                locale={_locale}
+              />
+            </div>
           )}
         </DashboardCard>
       </div>

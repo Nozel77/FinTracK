@@ -23,6 +23,7 @@ type SettingsPreferences = {
   readonly timezone: string;
   readonly language: string;
   readonly startOfWeek: "Monday" | "Sunday";
+  readonly dailyTransactionLimit?: number | string;
 };
 
 type PreferenceToggle = {
@@ -41,7 +42,9 @@ export type SettingsScreenProps = {
   readonly onSaveSettings?: MouseEventHandler<HTMLButtonElement>;
   readonly onPreviewChanges?: MouseEventHandler<HTMLButtonElement>;
   readonly onProfileChange?: ChangeEventHandler<HTMLInputElement>;
-  readonly onPreferenceChange?: ChangeEventHandler<HTMLSelectElement>;
+  readonly onPreferenceChange?: ChangeEventHandler<
+    HTMLSelectElement | HTMLInputElement
+  >;
   readonly onTogglePreference?: (toggleId: string) => void;
   readonly onResetSessions?: MouseEventHandler<HTMLButtonElement>;
 };
@@ -65,46 +68,49 @@ const defaultProfile: SettingsProfile = {
   fullName: "Alex Morgan",
   email: "alex.morgan@fintrack.app",
   phone: "+1 (555) 812-2091",
-  role: "Owner",
+  role: "Pemilik",
 };
 
 const defaultPreferences: SettingsPreferences = {
-  currency: "USD",
-  timezone: "UTC-05:00 (Eastern Time)",
-  language: "English (US)",
+  currency: "IDR",
+  timezone: "UTC+07:00 (Jakarta)",
+  language: "Bahasa Indonesia",
   startOfWeek: "Monday",
+  dailyTransactionLimit: 10000000,
 };
 
 const defaultToggles: ReadonlyArray<PreferenceToggle> = [
   {
     id: "email-alerts",
-    label: "Email alerts",
-    description: "Receive billing and account status updates by email.",
+    label: "Peringatan email",
+    description: "Terima pembaruan tagihan dan status akun melalui email.",
     enabled: true,
   },
   {
     id: "push-notifications",
-    label: "Push notifications",
-    description: "Get instant transaction and card activity notifications.",
+    label: "Notifikasi push",
+    description:
+      "Dapatkan notifikasi instan untuk transaksi dan aktivitas kartu.",
     enabled: true,
   },
   {
     id: "monthly-report",
-    label: "Monthly report",
-    description: "Send a monthly PDF summary to your inbox.",
+    label: "Laporan bulanan",
+    description: "Kirim ringkasan PDF bulanan ke kotak masuk Anda.",
     enabled: false,
   },
   {
     id: "compact-mode",
-    label: "Compact mode",
-    description: "Use denser cards and table rows across dashboard screens.",
+    label: "Mode ringkas",
+    description:
+      "Gunakan kartu dan baris tabel yang lebih padat di seluruh dashboard.",
     enabled: false,
   },
 ];
 
 export function SettingsScreen({
   viewModel,
-  locale: explicitLocale,
+  locale: _explicitLocale,
   profile = defaultProfile,
   preferences = defaultPreferences,
   toggles = defaultToggles,
@@ -115,74 +121,40 @@ export function SettingsScreen({
   onTogglePreference,
   onResetSessions,
 }: SettingsScreenProps) {
-  const locale: Locale =
-    explicitLocale ??
-    (preferences.language === "Bahasa Indonesia" ? "id" : "en");
+  const locale: Locale = "id";
 
-  const copy =
-    locale === "id"
-      ? {
-          title: "Pengaturan",
-          subtitle:
-            "Kelola profil akun, tampilan, notifikasi, dan preferensi keamanan.",
-          badgeLabel: "Tema Slate",
-          previewChanges: "Pratinjau perubahan",
-          saveSettings: "Simpan pengaturan",
-          profileTitle: "Profil",
-          profileSubtitle: "Informasi pribadi dan kontak untuk akun ini",
-          preferencesTitle: "Preferensi",
-          preferencesSubtitle: "Format regional dan default workspace",
-          notificationsTitle: "Notifikasi & perilaku",
-          notificationsSubtitle: "Atur cara dan waktu Anda menerima pembaruan",
-          securityTitle: "Keamanan",
-          securitySubtitle: "Kontrol sesi dan keamanan akun",
-          fullName: "Nama lengkap",
-          email: "Email",
-          phone: "Telepon",
-          role: "Peran",
-          currency: "Mata uang",
-          language: "Bahasa",
-          timezone: "Zona waktu",
-          startOfWeek: "Awal minggu",
-          activeSessions: "Sesi aktif",
-          activeSessionsMeta: "3 perangkat masuk • Aktivitas terakhir hari ini",
-          resetAllSessions: "Reset semua sesi",
-          lastSyncedRange: "Rentang sinkron terakhir",
-          companyName: "FinTracK",
-        }
-      : {
-          title: "Settings",
-          subtitle:
-            "Manage account profile, appearance, notifications, and security preferences.",
-          badgeLabel: "Slate theme",
-          previewChanges: "Preview changes",
-          saveSettings: "Save settings",
-          profileTitle: "Profile",
-          profileSubtitle: "Personal and contact information for this account",
-          preferencesTitle: "Preferences",
-          preferencesSubtitle: "Regional formatting and workspace defaults",
-          notificationsTitle: "Notifications & behavior",
-          notificationsSubtitle: "Control how and when you receive updates",
-          securityTitle: "Security",
-          securitySubtitle: "Session and account safety controls",
-          fullName: "Full name",
-          email: "Email",
-          phone: "Phone",
-          role: "Role",
-          currency: "Currency",
-          language: "Language",
-          timezone: "Timezone",
-          startOfWeek: "Week starts on",
-          activeSessions: "Active sessions",
-          activeSessionsMeta: "3 devices signed in • Last activity today",
-          resetAllSessions: "Reset all sessions",
-          lastSyncedRange: "Last synced range",
-          companyName: "FinTracK",
-        };
+  const copy = {
+    title: "Pengaturan",
+    subtitle:
+      "Kelola profil akun, tampilan, notifikasi, dan preferensi keamanan.",
+    badgeLabel: "Tema Slate",
+    previewChanges: "Pratinjau perubahan",
+    saveSettings: "Simpan pengaturan",
+    profileTitle: "Profil",
+    profileSubtitle: "Informasi pribadi dan kontak untuk akun ini",
+    preferencesTitle: "Preferensi",
+    preferencesSubtitle: "Format regional dan default workspace",
+    notificationsTitle: "Notifikasi & perilaku",
+    notificationsSubtitle: "Atur cara dan waktu Anda menerima pembaruan",
+    securityTitle: "Keamanan",
+    securitySubtitle: "Kontrol sesi dan keamanan akun",
+    fullName: "Nama lengkap",
+    email: "Email",
+    phone: "Telepon",
+    role: "Peran",
+    currency: "Mata uang",
+    language: "Bahasa",
+    timezone: "Zona waktu",
+    startOfWeek: "Awal minggu",
+    dailyTransactionLimit: "Batas transaksi harian",
+    activeSessions: "Sesi aktif",
+    activeSessionsMeta: "3 perangkat masuk • Aktivitas terakhir hari ini",
+    resetAllSessions: "Reset semua sesi",
+    lastSyncedRange: "Rentang sinkron terakhir",
+    companyName: "FinTracK",
+  };
 
   const localizedToggles = toggles.map((toggle) => {
-    if (locale !== "id") return toggle;
-
     switch (toggle.id) {
       case "email-alerts":
         return {
@@ -298,7 +270,7 @@ export function SettingsScreen({
                 label={copy.currency}
                 options={[
                   { value: "IDR", label: "IDR (Rupiah)" },
-                  { value: "USD", label: "USD (US Dollar)" },
+                  { value: "USD", label: "USD (Dolar AS)" },
                   { value: "EUR", label: "EUR (Euro)" },
                   { value: "JPY", label: "JPY (Yen)" },
                 ]}
@@ -309,11 +281,10 @@ export function SettingsScreen({
                 id="language"
                 label={copy.language}
                 options={[
-                  { value: "English (US)", label: "English (US)" },
-                  { value: "English (UK)", label: "English (UK)" },
-                  { value: "Bahasa Indonesia", label: "Bahasa Indonesia" },
-                  { value: "Spanish", label: "Spanish" },
-                  { value: "German", label: "German" },
+                  {
+                    value: "Bahasa Indonesia",
+                    label: "Bahasa Indonesia",
+                  },
                 ]}
                 value={preferences.language}
                 onChange={onPreferenceChange}
@@ -327,12 +298,12 @@ export function SettingsScreen({
                     label: "UTC+07:00 (Jakarta)",
                   },
                   {
-                    value: "UTC-08:00 (Pacific Time)",
-                    label: "UTC-08:00 (Pacific Time)",
+                    value: "UTC-08:00 (Waktu Pasifik)",
+                    label: "UTC-08:00 (Waktu Pasifik)",
                   },
                   {
-                    value: "UTC-05:00 (Eastern Time)",
-                    label: "UTC-05:00 (Eastern Time)",
+                    value: "UTC-05:00 (Waktu Timur)",
+                    label: "UTC-05:00 (Waktu Timur)",
                   },
                   { value: "UTC+00:00 (London)", label: "UTC+00:00 (London)" },
                 ]}
@@ -345,14 +316,21 @@ export function SettingsScreen({
                 options={[
                   {
                     value: "Monday",
-                    label: locale === "id" ? "Senin" : "Monday",
+                    label: "Senin",
                   },
                   {
                     value: "Sunday",
-                    label: locale === "id" ? "Minggu" : "Sunday",
+                    label: "Minggu",
                   },
                 ]}
                 value={preferences.startOfWeek}
+                onChange={onPreferenceChange}
+              />
+              <LimitInputField
+                id="dailyTransactionLimit"
+                label={copy.dailyTransactionLimit}
+                value={preferences.dailyTransactionLimit ?? ""}
+                placeholder="Contoh: 10000000"
                 onChange={onPreferenceChange}
               />
             </div>
@@ -460,7 +438,7 @@ type SelectFieldProps = {
   readonly label: string;
   readonly options: ReadonlyArray<SelectFieldOption>;
   readonly value: string;
-  readonly onChange?: ChangeEventHandler<HTMLSelectElement>;
+  readonly onChange?: ChangeEventHandler<HTMLSelectElement | HTMLInputElement>;
 };
 
 function SelectField({
@@ -486,6 +464,39 @@ function SelectField({
           </option>
         ))}
       </select>
+    </label>
+  );
+}
+
+type LimitInputFieldProps = {
+  readonly id: string;
+  readonly label: string;
+  readonly value: number | string;
+  readonly placeholder?: string;
+  readonly onChange?: ChangeEventHandler<HTMLSelectElement | HTMLInputElement>;
+};
+
+function LimitInputField({
+  id,
+  label,
+  value,
+  placeholder,
+  onChange,
+}: LimitInputFieldProps) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-xs font-medium text-muted">{label}</span>
+      <input
+        id={id}
+        name={id}
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9.]*"
+        value={String(value)}
+        onChange={onChange}
+        placeholder={placeholder}
+        className="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground outline-none transition-shadow placeholder:text-muted focus-visible:ring-2 focus-visible:ring-(--primary)/35"
+      />
     </label>
   );
 }

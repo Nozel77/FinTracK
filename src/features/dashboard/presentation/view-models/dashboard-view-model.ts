@@ -74,8 +74,8 @@ export function toDashboardViewModel(
 
   return {
     heading: {
-      title: "Dashboard",
-      subtitle: "Manage your payments and transactions in one click",
+      title: "Dasbor",
+      subtitle: "Kelola pembayaran dan transaksi Anda dalam satu klik",
       dateRangeLabel: formatDateRange(snapshot.range.from, snapshot.range.to),
     },
     summary: {

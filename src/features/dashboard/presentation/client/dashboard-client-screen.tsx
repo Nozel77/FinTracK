@@ -17,6 +17,8 @@ import {
   type ActionFormDialogField,
   type ActionFormValues,
 } from "../components/action-form-dialog";
+import { ActionPill } from "../components/action-pill";
+import { DashboardCard } from "../components/dashboard-card";
 import {
   DEFAULT_PREFERENCES,
   DEFAULT_PROFILE,
@@ -28,11 +30,9 @@ import {
   type SettingsToggleId,
 } from "../state/dashboard-ui-store";
 import type { DashboardViewModel } from "../view-models/dashboard-view-model";
+import { SidebarPageShell } from "../screens/sidebar-page-shell";
 import { getSupabaseBrowserClient } from "@/src/shared/supabase/browser-client";
-import {
-  localeFromLanguagePreference,
-  whenLocale,
-} from "@/src/shared/i18n/locale";
+import { whenLocale } from "@/src/shared/i18n/locale";
 
 const DashboardScreen = dynamic(() =>
   import("../dashboard-screen").then((module) => module.DashboardScreen),
@@ -84,6 +84,7 @@ type UserSettingsRow = {
   push_notifications: boolean;
   monthly_report: boolean;
   compact_mode: boolean;
+  daily_transaction_limit: number | null;
 };
 
 type DashboardClientScreenProps = {
@@ -120,6 +121,8 @@ export function DashboardClientScreen({
     screen,
     viewModel,
     range,
+    quickRangePreset,
+    pagination,
     busy,
     message,
     transactionFilter,
@@ -135,6 +138,8 @@ export function DashboardClientScreen({
       screen: state.screen,
       viewModel: state.viewModel,
       range: state.range,
+      quickRangePreset: state.quickRangePreset,
+      pagination: state.pagination,
       busy: state.busy,
       message: state.message,
       transactionFilter: state.transactionFilter,
@@ -151,6 +156,9 @@ export function DashboardClientScreen({
   const {
     setViewModel,
     setRange,
+    setQuickRangePreset,
+    setPaginationPage,
+    resetPagination,
     setBusy,
     setMessage,
     clearMessage,
@@ -170,6 +178,9 @@ export function DashboardClientScreen({
     useShallow((state) => ({
       setViewModel: state.setViewModel,
       setRange: state.setRange,
+      setQuickRangePreset: state.setQuickRangePreset,
+      setPaginationPage: state.setPaginationPage,
+      resetPagination: state.resetPagination,
       setBusy: state.setBusy,
       setMessage: state.setMessage,
       clearMessage: state.clearMessage,
@@ -188,11 +199,9 @@ export function DashboardClientScreen({
     })),
   );
 
-  const locale = useMemo(
-    () => localeFromLanguagePreference(preferences.language, "en"),
-    [preferences.language],
-  );
+  const locale = "id" as const;
   const [showSlowSkeleton, setShowSlowSkeleton] = useState(false);
+  const [dailyLimitDialogOpen, setDailyLimitDialogOpen] = useState(false);
 
   const copy = useMemo(
     () =>
@@ -211,9 +220,22 @@ export function DashboardClientScreen({
           selectDateRangeDescription:
             "Update your dashboard snapshot date range.",
           applyRange: "Apply range",
+          rangePreset: "Range preset",
+          presetToday: "Today",
+          presetWeek: "This week",
+          presetMonthly: "This month",
+          presetCustom: "Custom range",
           fromDate: "From date",
           toDate: "To date",
           keepCurrentValue: "Leave empty to keep current value.",
+          customRangeLimit:
+            "Custom range supports up to 3 months (from start date).",
+          openDailyLimitSettings: "Set daily limit",
+          dailyLimitDialogTitle: "Daily limit settings",
+          dailyLimitDialogDescription:
+            "Set your preferred daily expense limit.",
+          dailyLimitField: "Daily transaction limit (IDR)",
+          dailyLimitDialogSubmit: "Save daily limit",
           addFundsTitle: "Add funds",
           addFundsDescription:
             "Create a deposit transaction and update your balances.",
@@ -228,10 +250,8 @@ export function DashboardClientScreen({
           transactionCategory: "Category",
           transactionDirection: "Direction",
           transactionAmount: "Amount (IDR)",
-          transactionAccountId: "Account ID",
           directionIncome: "Income",
           directionExpense: "Expense",
-          directionTransfer: "Transfer",
           createGoalTitle: "Create goal",
           createGoalDescription: "Set a new savings goal target.",
           createGoalSubmit: "Create goal",
@@ -239,14 +259,11 @@ export function DashboardClientScreen({
           goalTarget: "Target amount (IDR)",
           goalSaved: "Saved amount (IDR)",
           goalDeadline: "Deadline",
-          adjustPlanTitle: "Adjust goal plan",
+          adjustPlanTitle: "Update saved progress",
           adjustPlanDescription:
-            "Update contribution, target, or deadline for a goal.",
-          adjustPlanSubmit: "Apply changes",
-          adjustGoalId: "Goal ID",
+            "Record additional savings progress for this goal.",
+          adjustPlanSubmit: "Save progress",
           adjustAddSavedAmount: "Add saved amount (IDR)",
-          adjustNewTarget: "New target (IDR)",
-          adjustNewDeadline: "New deadline",
         },
         id: {
           actionCompleted: "Aksi berhasil dijalankan.",
@@ -262,9 +279,22 @@ export function DashboardClientScreen({
           selectDateRangeDescription:
             "Perbarui rentang tanggal snapshot dashboard Anda.",
           applyRange: "Terapkan rentang",
+          rangePreset: "Preset rentang",
+          presetToday: "Hari ini",
+          presetWeek: "Minggu ini",
+          presetMonthly: "Bulan ini",
+          presetCustom: "Rentang kustom",
           fromDate: "Tanggal mulai",
           toDate: "Tanggal akhir",
           keepCurrentValue: "Kosongkan untuk mempertahankan nilai saat ini.",
+          customRangeLimit:
+            "Rentang kustom maksimal 3 bulan (dari tanggal mulai).",
+          openDailyLimitSettings: "Atur batas harian",
+          dailyLimitDialogTitle: "Pengaturan batas harian",
+          dailyLimitDialogDescription:
+            "Atur batas pengeluaran harian sesuai kebutuhan Anda.",
+          dailyLimitField: "Batas transaksi harian (IDR)",
+          dailyLimitDialogSubmit: "Simpan batas",
           addFundsTitle: "Tambah dana",
           addFundsDescription:
             "Buat transaksi deposit dan perbarui saldo Anda.",
@@ -279,10 +309,8 @@ export function DashboardClientScreen({
           transactionCategory: "Kategori",
           transactionDirection: "Arah",
           transactionAmount: "Jumlah (IDR)",
-          transactionAccountId: "ID akun",
           directionIncome: "Pemasukan",
           directionExpense: "Pengeluaran",
-          directionTransfer: "Transfer",
           createGoalTitle: "Buat tujuan",
           createGoalDescription: "Tetapkan target tabungan baru.",
           createGoalSubmit: "Buat tujuan",
@@ -290,14 +318,11 @@ export function DashboardClientScreen({
           goalTarget: "Target jumlah (IDR)",
           goalSaved: "Jumlah terkumpul (IDR)",
           goalDeadline: "Tenggat",
-          adjustPlanTitle: "Sesuaikan rencana tujuan",
+          adjustPlanTitle: "Update progres tabungan",
           adjustPlanDescription:
-            "Perbarui kontribusi, target, atau tenggat tujuan.",
-          adjustPlanSubmit: "Terapkan perubahan",
-          adjustGoalId: "ID tujuan",
+            "Catat tambahan uang yang sudah terkumpul untuk tujuan ini.",
+          adjustPlanSubmit: "Simpan progres",
           adjustAddSavedAmount: "Tambah jumlah tabungan (IDR)",
-          adjustNewTarget: "Target baru (IDR)",
-          adjustNewDeadline: "Tenggat baru",
         },
       }),
     [locale],
@@ -329,7 +354,7 @@ export function DashboardClientScreen({
         const { data, error } = await supabase
           .from("user_settings")
           .select(
-            "full_name,email,phone,role,currency,timezone,language,start_of_week,email_alerts,push_notifications,monthly_report,compact_mode",
+            "full_name,email,phone,role,currency,timezone,language,start_of_week,email_alerts,push_notifications,monthly_report,compact_mode,daily_transaction_limit",
           )
           .eq("user_id", userId)
           .maybeSingle<UserSettingsRow>();
@@ -348,6 +373,9 @@ export function DashboardClientScreen({
           timezone: data.timezone || DEFAULT_PREFERENCES.timezone,
           language: data.language || DEFAULT_PREFERENCES.language,
           startOfWeek: data.start_of_week === "Sunday" ? "Sunday" : "Monday",
+          dailyTransactionLimit:
+            toPositiveNumberFromUnknown(data.daily_transaction_limit) ??
+            DEFAULT_PREFERENCES.dailyTransactionLimit,
         });
 
         setToggles(
@@ -432,6 +460,7 @@ export function DashboardClientScreen({
         const shouldRefreshSnapshot = options?.refreshSnapshotOnSuccess ?? true;
         if (shouldRefreshSnapshot) {
           await refreshSnapshot();
+          resetPagination();
         }
 
         setMessage(
@@ -447,6 +476,7 @@ export function DashboardClientScreen({
       copy.actionCompleted,
       copy.actionFailed,
       refreshSnapshot,
+      resetPagination,
       setBusy,
       setMessage,
       userId,
@@ -458,15 +488,109 @@ export function DashboardClientScreen({
     openDialogById("date-range");
   }, [clearDialogError, openDialogById]);
 
+  const onOpenDailyLimitSettings = useCallback(() => {
+    clearDialogError();
+    setDailyLimitDialogOpen(true);
+  }, [clearDialogError]);
+
+  const onSubmitDailyLimitSettings = useCallback(
+    async (values: ActionFormValues) => {
+      const dailyLimit = toPositiveNumber(values.dailyTransactionLimit ?? "");
+      if (!dailyLimit) {
+        setDialogError("Batas transaksi harian harus berupa angka positif.");
+        return;
+      }
+
+      const nextPreferences: SettingsPreferences = {
+        ...preferences,
+        dailyTransactionLimit: dailyLimit,
+      };
+
+      setDialogError("");
+      setPreferences(nextPreferences);
+
+      await runAction(
+        "/api/dashboard/actions/save-settings",
+        {
+          profile,
+          preferences: nextPreferences,
+          toggles: {
+            emailAlerts:
+              toggles.find((x) => x.id === "email-alerts")?.enabled ?? true,
+            pushNotifications:
+              toggles.find((x) => x.id === "push-notifications")?.enabled ??
+              true,
+            monthlyReport:
+              toggles.find((x) => x.id === "monthly-report")?.enabled ?? false,
+            compactMode:
+              toggles.find((x) => x.id === "compact-mode")?.enabled ?? false,
+          },
+        },
+        {
+          refreshSnapshotOnSuccess: true,
+          successMessage: copy.settingsSaved,
+        },
+      );
+
+      setDailyLimitDialogOpen(false);
+    },
+    [
+      copy.settingsSaved,
+      preferences,
+      profile,
+      runAction,
+      setDialogError,
+      setPreferences,
+      toggles,
+    ],
+  );
+
   const onSubmitDateRange = useCallback(
     async (values: ActionFormValues) => {
-      const fromInput = values.from?.trim() ?? "";
-      const toInput = values.to?.trim() ?? "";
+      const preset = normalizeQuickRangePreset(
+        values.preset ?? quickRangePreset,
+      );
 
-      const nextRange = {
-        from: fromInput || range.from,
-        to: toInput || range.to,
-      };
+      let nextRange: { from: string; to: string };
+
+      if (preset === "today" || preset === "week" || preset === "monthly") {
+        nextRange = getPresetDateRange(preset, new Date());
+      } else {
+        const fromInput = values.from?.trim() ?? "";
+        const toInput = values.to?.trim() ?? "";
+
+        const resolvedFrom = fromInput || range.from;
+        const resolvedTo = toInput || range.to;
+
+        if (!resolvedFrom || !resolvedTo) {
+          setDialogError(
+            "Tanggal mulai dan akhir wajib diisi untuk rentang kustom.",
+          );
+          return;
+        }
+
+        if (!isIsoDateString(resolvedFrom) || !isIsoDateString(resolvedTo)) {
+          setDialogError("Format tanggal tidak valid.");
+          return;
+        }
+
+        if (new Date(resolvedFrom).getTime() > new Date(resolvedTo).getTime()) {
+          setDialogError(
+            "Tanggal mulai harus sebelum atau sama dengan tanggal akhir.",
+          );
+          return;
+        }
+
+        if (!isWithinThreeMonths(resolvedFrom, resolvedTo)) {
+          setDialogError(copy.customRangeLimit);
+          return;
+        }
+
+        nextRange = {
+          from: resolvedFrom,
+          to: resolvedTo,
+        };
+      }
 
       setBusy(true);
       clearMessage();
@@ -474,6 +598,8 @@ export function DashboardClientScreen({
 
       try {
         await refreshSnapshot(nextRange);
+        setQuickRangePreset(preset);
+        resetPagination();
         setMessage(copy.dateRangeUpdated);
         closeDialog();
       } catch (error) {
@@ -489,14 +615,18 @@ export function DashboardClientScreen({
       clearDialogError,
       clearMessage,
       closeDialog,
+      copy.customRangeLimit,
       copy.dateRangeUpdated,
       copy.rangeUpdateFailed,
+      quickRangePreset,
       range.from,
       range.to,
       refreshSnapshot,
+      resetPagination,
       setBusy,
       setDialogError,
       setMessage,
+      setQuickRangePreset,
     ],
   );
 
@@ -506,7 +636,7 @@ export function DashboardClientScreen({
 
     try {
       const query = new URLSearchParams(buildQuery());
-      query.set("format", "csv");
+      query.set("format", "pdf");
 
       const response = await fetch(
         `/api/dashboard/export?${query.toString()}`,
@@ -526,7 +656,7 @@ export function DashboardClientScreen({
       anchor.href = url;
       anchor.download = `dashboard-report-${new Date()
         .toISOString()
-        .slice(0, 10)}.csv`;
+        .slice(0, 10)}.pdf`;
       document.body.append(anchor);
       anchor.click();
       anchor.remove();
@@ -552,7 +682,7 @@ export function DashboardClientScreen({
   );
 
   const onPreferenceChange = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
+    (event: ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
       const { name, value } = event.target;
       setPreferences({
         ...preferences,
@@ -578,7 +708,7 @@ export function DashboardClientScreen({
     async (values: ActionFormValues) => {
       const amount = toPositiveNumber(values.amount ?? "");
       if (!amount) {
-        setDialogError("Amount must be a positive number.");
+        setDialogError("Jumlah harus berupa angka positif.");
         return;
       }
 
@@ -606,31 +736,29 @@ export function DashboardClientScreen({
     async (values: ActionFormValues) => {
       const title = toOptionalString(values.title ?? "", true);
       if (title === null) {
-        setDialogError("Transaction title is required.");
+        setDialogError("Judul transaksi wajib diisi.");
         return;
       }
 
       const category = toOptionalString(values.category ?? "", true);
       if (category === null) {
-        setDialogError("Category is required.");
+        setDialogError("Kategori wajib diisi.");
         return;
       }
 
       const direction = normalizeDirection(values.direction ?? "");
       if (!direction) {
         setDialogError(
-          'Direction must be one of: "income", "expense", "transfer".',
+          'Arah transaksi harus salah satu: "income" atau "expense".',
         );
         return;
       }
 
       const amount = toPositiveNumber(values.amount ?? "");
       if (!amount) {
-        setDialogError("Amount must be a positive number.");
+        setDialogError("Jumlah harus berupa angka positif.");
         return;
       }
-
-      const accountId = toOptionalString(values.accountId ?? "");
 
       setDialogError("");
       await runAction("/api/dashboard/actions/add-transaction", {
@@ -638,7 +766,6 @@ export function DashboardClientScreen({
         category,
         direction,
         amount,
-        accountId,
         occurredAt: new Date().toISOString(),
       });
       closeDialog();
@@ -655,26 +782,26 @@ export function DashboardClientScreen({
     async (values: ActionFormValues) => {
       const name = toOptionalString(values.name ?? "", true);
       if (name === null) {
-        setDialogError("Goal name is required.");
+        setDialogError("Nama tujuan wajib diisi.");
         return;
       }
 
       const target = toPositiveNumber(values.target ?? "");
       if (!target) {
-        setDialogError("Target must be a positive number.");
+        setDialogError("Target harus berupa angka positif.");
         return;
       }
 
       const savedRaw = values.saved ?? "";
       const saved = savedRaw.trim() ? toNonNegativeNumber(savedRaw) : 0;
       if (saved === null) {
-        setDialogError("Saved amount must be a non-negative number.");
+        setDialogError("Jumlah tabungan harus berupa angka nol atau positif.");
         return;
       }
 
       const deadline = toIsoDate(values.deadline ?? "");
       if (!deadline) {
-        setDialogError("Deadline must be a valid date.");
+        setDialogError("Tenggat harus berupa tanggal yang valid.");
         return;
       }
 
@@ -701,43 +828,22 @@ export function DashboardClientScreen({
 
   const onSubmitAdjustPlan = useCallback(
     async (values: ActionFormValues) => {
-      const goalId = toOptionalString(values.goalId ?? "", true);
+      const goalId = adjustPlanGoalId ?? viewModel.goals[0]?.id ?? null;
       if (goalId === null) {
-        setDialogError("Goal ID is required.");
+        setDialogError("Tujuan tidak ditemukan.");
         return;
       }
 
       const addSavedAmountInput = values.addSavedAmount ?? "";
-      const newTargetInput = values.newTarget ?? "";
-      const newDeadlineInput = values.newDeadline ?? "";
-
       const addSavedAmount = parseOptionalPositive(addSavedAmountInput);
-      const newTarget = parseOptionalPositive(newTargetInput);
-      const newDeadline = newDeadlineInput.trim()
-        ? toIsoDate(newDeadlineInput.trim())
-        : undefined;
 
       if (addSavedAmountInput.trim() && addSavedAmount === undefined) {
-        setDialogError("Add saved amount must be a positive number.");
+        setDialogError("Tambahan tabungan harus berupa angka positif.");
         return;
       }
 
-      if (newTargetInput.trim() && newTarget === undefined) {
-        setDialogError("New target must be a positive number.");
-        return;
-      }
-
-      if (newDeadlineInput.trim() && !newDeadline) {
-        setDialogError("New deadline must be a valid date.");
-        return;
-      }
-
-      if (
-        addSavedAmount === undefined &&
-        newTarget === undefined &&
-        !newDeadline
-      ) {
-        setDialogError("Provide at least one adjustment field.");
+      if (addSavedAmount === undefined) {
+        setDialogError("Jumlah tabungan yang ditambahkan wajib diisi.");
         return;
       }
 
@@ -745,21 +851,38 @@ export function DashboardClientScreen({
       await runAction("/api/dashboard/actions/adjust-plan", {
         goalId,
         addSavedAmount,
-        newTarget,
-        newDeadline,
       });
       closeDialog();
       setAdjustPlanGoalId(null);
     },
-    [closeDialog, runAction, setAdjustPlanGoalId, setDialogError],
+    [
+      adjustPlanGoalId,
+      closeDialog,
+      runAction,
+      setAdjustPlanGoalId,
+      setDialogError,
+      viewModel.goals,
+    ],
   );
 
   const onSaveSettings = useCallback(() => {
+    const dailyTransactionLimit = toPositiveNumberFromUnknown(
+      preferences.dailyTransactionLimit,
+    );
+
+    if (dailyTransactionLimit === null) {
+      setMessage("Batas transaksi harian harus berupa angka positif.");
+      return;
+    }
+
     void runAction(
       "/api/dashboard/actions/save-settings",
       {
         profile,
-        preferences,
+        preferences: {
+          ...preferences,
+          dailyTransactionLimit,
+        },
         toggles: {
           emailAlerts:
             toggles.find((x) => x.id === "email-alerts")?.enabled ?? true,
@@ -776,7 +899,14 @@ export function DashboardClientScreen({
         successMessage: copy.settingsSaved,
       },
     );
-  }, [copy.settingsSaved, preferences, profile, runAction, toggles]);
+  }, [
+    copy.settingsSaved,
+    preferences,
+    profile,
+    runAction,
+    setMessage,
+    toggles,
+  ]);
 
   const onResetSessions = useCallback(() => {
     void runAction(
@@ -789,20 +919,281 @@ export function DashboardClientScreen({
     );
   }, [copy.sessionReset, runAction]);
 
+  const onOpenOverSpeedAlert = useCallback(() => {
+    clearDialogError();
+    openDialogById("set-over-speed-alert");
+  }, [clearDialogError, openDialogById]);
+
+  const onOpenRolloverBudget = useCallback(() => {
+    clearDialogError();
+    openDialogById("configure-rollover-budget");
+  }, [clearDialogError, openDialogById]);
+
+  const onOpenAddSubscription = useCallback(() => {
+    clearDialogError();
+    openDialogById("add-subscription");
+  }, [clearDialogError, openDialogById]);
+
+  const onOpenAddBill = useCallback(() => {
+    clearDialogError();
+    openDialogById("add-bill");
+  }, [clearDialogError, openDialogById]);
+
+  const onOpenAddDebt = useCallback(() => {
+    clearDialogError();
+    openDialogById("add-debt");
+  }, [clearDialogError, openDialogById]);
+
+  const onOpenAddReceivable = useCallback(() => {
+    clearDialogError();
+    openDialogById("add-receivable");
+  }, [clearDialogError, openDialogById]);
+
+  const onOpenRunDebtStrategy = useCallback(() => {
+    clearDialogError();
+    openDialogById("run-debt-strategy");
+  }, [clearDialogError, openDialogById]);
+
+  const onSubmitOverSpeedAlert = useCallback(
+    async (values: ActionFormValues) => {
+      const category = toOptionalString(values.category ?? "", true);
+      if (!category) {
+        setDialogError("Kategori wajib diisi.");
+        return;
+      }
+
+      const thresholdPct = toPositiveNumber(values.thresholdPct ?? "");
+      if (!thresholdPct || thresholdPct > 100) {
+        setDialogError(
+          "Persentase batas over-speed harus antara 1 sampai 100.",
+        );
+        return;
+      }
+
+      setDialogError("");
+      setMessage(
+        `Peringatan over-speed untuk ${category} diatur pada ${Math.round(
+          thresholdPct,
+        )}% dari ritme harian.`,
+      );
+      closeDialog();
+    },
+    [closeDialog, setDialogError, setMessage],
+  );
+
+  const onSubmitRolloverBudget = useCallback(
+    async (values: ActionFormValues) => {
+      const rolloverPct = toNonNegativeNumber(values.rolloverPct ?? "");
+      if (rolloverPct === null || rolloverPct > 100) {
+        setDialogError("Persentase rollover harus antara 0 sampai 100.");
+        return;
+      }
+
+      setDialogError("");
+      setMessage(
+        `Rollover budget aktif: ${Math.round(
+          rolloverPct,
+        )}% sisa anggaran akan ditambahkan ke bulan berikutnya.`,
+      );
+      closeDialog();
+    },
+    [closeDialog, setDialogError, setMessage],
+  );
+
+  const onSubmitAddSubscription = useCallback(
+    async (values: ActionFormValues) => {
+      const service = toOptionalString(values.service ?? "", true);
+      if (!service) {
+        setDialogError("Nama layanan wajib diisi.");
+        return;
+      }
+
+      const amount = toPositiveNumber(values.amount ?? "");
+      if (!amount) {
+        setDialogError("Jumlah harus berupa angka positif.");
+        return;
+      }
+
+      const debitDate = toIsoDate(values.debitDate ?? "");
+      if (!debitDate) {
+        setDialogError("Tanggal debit harus berupa tanggal valid.");
+        return;
+      }
+
+      setDialogError("");
+      await runAction("/api/dashboard/actions/add-transaction", {
+        title: `Langganan: ${service}`,
+        category: "Subscription",
+        direction: "expense",
+        amount,
+        occurredAt: new Date(`${debitDate}T08:00:00.000Z`).toISOString(),
+      });
+      closeDialog();
+    },
+    [closeDialog, runAction, setDialogError],
+  );
+
+  const onSubmitAddBill = useCallback(
+    async (values: ActionFormValues) => {
+      const billName = toOptionalString(values.billName ?? "", true);
+      if (!billName) {
+        setDialogError("Nama tagihan wajib diisi.");
+        return;
+      }
+
+      const amount = toPositiveNumber(values.amount ?? "");
+      if (!amount) {
+        setDialogError("Jumlah harus berupa angka positif.");
+        return;
+      }
+
+      const dueDate = toIsoDate(values.dueDate ?? "");
+      if (!dueDate) {
+        setDialogError("Tanggal jatuh tempo harus berupa tanggal valid.");
+        return;
+      }
+
+      const category = toOptionalString(values.category ?? "") ?? "Tagihan";
+
+      setDialogError("");
+      await runAction("/api/dashboard/actions/add-transaction", {
+        title: `Tagihan: ${billName}`,
+        category,
+        direction: "expense",
+        amount,
+        occurredAt: new Date(`${dueDate}T08:00:00.000Z`).toISOString(),
+      });
+      closeDialog();
+    },
+    [closeDialog, runAction, setDialogError],
+  );
+
+  const onSubmitAddDebt = useCallback(
+    async (values: ActionFormValues) => {
+      const creditor = toOptionalString(values.creditor ?? "", true);
+      if (!creditor) {
+        setDialogError("Nama kreditur wajib diisi.");
+        return;
+      }
+
+      const amount = toPositiveNumber(values.amount ?? "");
+      if (!amount) {
+        setDialogError("Jumlah hutang harus berupa angka positif.");
+        return;
+      }
+
+      setDialogError("");
+      await runAction("/api/dashboard/actions/add-transaction", {
+        title: `Cicilan: ${creditor}`,
+        category: "Hutang",
+        direction: "expense",
+        amount,
+        occurredAt: new Date().toISOString(),
+      });
+      closeDialog();
+    },
+    [closeDialog, runAction, setDialogError],
+  );
+
+  const onSubmitAddReceivable = useCallback(
+    async (values: ActionFormValues) => {
+      const debtor = toOptionalString(values.debtor ?? "", true);
+      if (!debtor) {
+        setDialogError("Nama peminjam wajib diisi.");
+        return;
+      }
+
+      const amount = toPositiveNumber(values.amount ?? "");
+      if (!amount) {
+        setDialogError("Jumlah piutang harus berupa angka positif.");
+        return;
+      }
+
+      const expectedDate = toIsoDate(values.expectedDate ?? "");
+      const occurredAt = expectedDate
+        ? new Date(`${expectedDate}T08:00:00.000Z`).toISOString()
+        : new Date().toISOString();
+
+      setDialogError("");
+      await runAction("/api/dashboard/actions/add-transaction", {
+        title: `Piutang: ${debtor}`,
+        category: "Piutang",
+        direction: "income",
+        amount,
+        occurredAt,
+      });
+      closeDialog();
+    },
+    [closeDialog, runAction, setDialogError],
+  );
+
+  const onSubmitRunDebtStrategy = useCallback(
+    async (values: ActionFormValues) => {
+      const strategy = (values.strategy ?? "").trim().toLowerCase();
+      if (strategy !== "snowball" && strategy !== "avalanche") {
+        setDialogError('Strategi harus "snowball" atau "avalanche".');
+        return;
+      }
+
+      const extraPayment = toNonNegativeNumber(values.extraPayment ?? "") ?? 0;
+
+      setDialogError("");
+      setMessage(
+        strategy === "avalanche"
+          ? `Strategi Avalanche aktif. Prioritas pembayaran pada bunga tertinggi dengan ekstra pembayaran ${formatIdr(
+              extraPayment,
+            )}.`
+          : `Strategi Snowball aktif. Prioritas pembayaran pada saldo terkecil dengan ekstra pembayaran ${formatIdr(
+              extraPayment,
+            )}.`,
+      );
+      closeDialog();
+    },
+    [closeDialog, setDialogError, setMessage],
+  );
+
   const dateRangeFields: ActionFormDialogField[] = [
+    {
+      name: "preset",
+      label: copy.rangePreset,
+      type: "select",
+      placeholder: copy.rangePreset,
+      defaultValue: quickRangePreset,
+      required: true,
+      options: [
+        { label: copy.presetToday, value: "today" },
+        { label: copy.presetWeek, value: "week" },
+        { label: copy.presetMonthly, value: "monthly" },
+        { label: copy.presetCustom, value: "custom" },
+      ],
+    },
     {
       name: "from",
       label: copy.fromDate,
       type: "date",
-      defaultValue: range.from ?? "",
-      description: copy.keepCurrentValue,
+      placeholder: "Pilih tanggal mulai",
+      description: copy.customRangeLimit,
     },
     {
       name: "to",
       label: copy.toDate,
       type: "date",
-      defaultValue: range.to ?? "",
+      placeholder: "Pilih tanggal akhir",
       description: copy.keepCurrentValue,
+    },
+  ];
+
+  const dailyLimitSettingsFields: ActionFormDialogField[] = [
+    {
+      name: "dailyTransactionLimit",
+      label: copy.dailyLimitField,
+      type: "text",
+      placeholder: "Contoh: 10000000",
+      defaultValue: `${preferences.dailyTransactionLimit ?? ""}`,
+      required: true,
+      formatThousands: true,
+      min: 1,
+      step: 1000,
     },
   ];
 
@@ -811,20 +1202,21 @@ export function DashboardClientScreen({
       name: "amount",
       label: copy.addFundsAmount,
       type: "text",
-      defaultValue: "1,000,000",
+      placeholder: "Contoh: 1.000.000",
       required: true,
+      formatThousands: true,
       min: 0,
       step: 1000,
     },
     {
       name: "title",
       label: copy.addFundsFieldTitle,
-      defaultValue: "Add funds",
+      placeholder: "Contoh: Top up saldo",
     },
     {
       name: "category",
       label: copy.addFundsCategory,
-      defaultValue: "Deposit",
+      placeholder: "Contoh: Setoran",
     },
   ];
 
@@ -832,39 +1224,48 @@ export function DashboardClientScreen({
     {
       name: "title",
       label: copy.transactionTitle,
-      defaultValue: "Manual transaction",
+      placeholder: "Contoh: Makan siang kantor",
       required: true,
     },
     {
       name: "category",
       label: copy.transactionCategory,
-      defaultValue: "General",
+      type: "select",
+      placeholder: "Pilih kategori",
       required: true,
+      options: [
+        { label: "Makanan & Minuman", value: "Makanan & Minuman" },
+        { label: "Transportasi", value: "Transportasi" },
+        { label: "Belanja", value: "Belanja" },
+        { label: "Tagihan", value: "Tagihan" },
+        { label: "Kesehatan", value: "Kesehatan" },
+        { label: "Pendidikan", value: "Pendidikan" },
+        { label: "Hiburan", value: "Hiburan" },
+        { label: "Rumah Tangga", value: "Rumah Tangga" },
+        { label: "Gaji", value: "Gaji" },
+        { label: "Investasi", value: "Investasi" },
+      ],
     },
     {
       name: "direction",
       label: copy.transactionDirection,
       type: "select",
-      defaultValue: "expense",
+      placeholder: "Pilih arah transaksi",
       required: true,
       options: [
         { label: copy.directionIncome, value: "income" },
         { label: copy.directionExpense, value: "expense" },
-        { label: copy.directionTransfer, value: "transfer" },
       ],
     },
     {
       name: "amount",
       label: copy.transactionAmount,
       type: "text",
-      defaultValue: "150,000",
+      placeholder: "Contoh: 150.000",
       required: true,
+      formatThousands: true,
       min: 0,
       step: 1000,
-    },
-    {
-      name: "accountId",
-      label: copy.transactionAccountId,
     },
   ];
 
@@ -872,15 +1273,16 @@ export function DashboardClientScreen({
     {
       name: "name",
       label: copy.goalName,
-      defaultValue: "New goal",
+      placeholder: "Contoh: Dana darurat",
       required: true,
     },
     {
       name: "target",
       label: copy.goalTarget,
       type: "text",
-      defaultValue: "10,000,000",
+      placeholder: "Contoh: 10.000.000",
       required: true,
+      formatThousands: true,
       min: 0,
       step: 1000,
     },
@@ -888,7 +1290,8 @@ export function DashboardClientScreen({
       name: "saved",
       label: copy.goalSaved,
       type: "text",
-      defaultValue: "0",
+      placeholder: "Contoh: 0",
+      formatThousands: true,
       min: 0,
       step: 1000,
     },
@@ -896,37 +1299,190 @@ export function DashboardClientScreen({
       name: "deadline",
       label: copy.goalDeadline,
       type: "date",
-      defaultValue: nextDateMonths(6),
+      placeholder: "Pilih tenggat",
       required: true,
     },
   ];
 
   const adjustPlanFields: ActionFormDialogField[] = [
     {
-      name: "goalId",
-      label: copy.adjustGoalId,
-      defaultValue: adjustPlanGoalId ?? viewModel.goals[0]?.id ?? "",
-      required: true,
-    },
-    {
       name: "addSavedAmount",
       label: copy.adjustAddSavedAmount,
       type: "text",
+      placeholder: "Contoh: 500.000",
+      required: true,
+      formatThousands: true,
       min: 0,
       step: 1000,
     },
+  ];
 
+  const overSpeedAlertFields: ActionFormDialogField[] = [
     {
-      name: "newTarget",
-      label: copy.adjustNewTarget,
+      name: "category",
+      label: "Kategori pengeluaran",
+      type: "select",
+      placeholder: "Pilih kategori",
+      required: true,
+      options: [
+        { label: "Kopi", value: "Kopi" },
+        { label: "Hobi", value: "Hobi" },
+        { label: "Hiburan", value: "Hiburan" },
+        { label: "Belanja", value: "Belanja" },
+      ],
+    },
+    {
+      name: "thresholdPct",
+      label: "Batas over-speed (%)",
       type: "text",
+      placeholder: "Contoh: 65",
+      required: true,
+      formatThousands: true,
+      min: 1,
+      max: 100,
+      step: 1,
+    },
+  ];
+
+  const rolloverBudgetFields: ActionFormDialogField[] = [
+    {
+      name: "rolloverPct",
+      label: "Persentase rollover (%)",
+      type: "text",
+      placeholder: "Contoh: 100",
+      required: true,
+      formatThousands: true,
+      min: 0,
+      max: 100,
+      step: 1,
+    },
+  ];
+
+  const subscriptionFields: ActionFormDialogField[] = [
+    {
+      name: "service",
+      label: "Nama layanan",
+      placeholder: "Contoh: Netflix",
+      required: true,
+    },
+    {
+      name: "amount",
+      label: "Biaya langganan (IDR)",
+      type: "text",
+      placeholder: "Contoh: 180.000",
+      required: true,
+      formatThousands: true,
       min: 0,
       step: 1000,
     },
     {
-      name: "newDeadline",
-      label: copy.adjustNewDeadline,
+      name: "debitDate",
+      label: "Tanggal debit",
       type: "date",
+      required: true,
+    },
+  ];
+
+  const billFields: ActionFormDialogField[] = [
+    {
+      name: "billName",
+      label: "Nama tagihan",
+      placeholder: "Contoh: Listrik",
+      required: true,
+    },
+    {
+      name: "category",
+      label: "Kategori",
+      type: "select",
+      placeholder: "Pilih kategori",
+      required: true,
+      options: [
+        { label: "Tagihan", value: "Tagihan" },
+        { label: "Internet", value: "Internet" },
+        { label: "Cicilan", value: "Cicilan" },
+      ],
+    },
+    {
+      name: "amount",
+      label: "Nominal tagihan (IDR)",
+      type: "text",
+      placeholder: "Contoh: 650.000",
+      required: true,
+      formatThousands: true,
+      min: 0,
+      step: 1000,
+    },
+    {
+      name: "dueDate",
+      label: "Jatuh tempo",
+      type: "date",
+      required: true,
+    },
+  ];
+
+  const debtFields: ActionFormDialogField[] = [
+    {
+      name: "creditor",
+      label: "Kreditur / sumber hutang",
+      placeholder: "Contoh: Bank A",
+      required: true,
+    },
+    {
+      name: "amount",
+      label: "Nominal cicilan (IDR)",
+      type: "text",
+      placeholder: "Contoh: 1.500.000",
+      required: true,
+      formatThousands: true,
+      min: 0,
+      step: 1000,
+    },
+  ];
+
+  const receivableFields: ActionFormDialogField[] = [
+    {
+      name: "debtor",
+      label: "Nama peminjam",
+      placeholder: "Contoh: Budi",
+      required: true,
+    },
+    {
+      name: "amount",
+      label: "Nominal piutang (IDR)",
+      type: "text",
+      placeholder: "Contoh: 500.000",
+      required: true,
+      formatThousands: true,
+      min: 0,
+      step: 1000,
+    },
+    {
+      name: "expectedDate",
+      label: "Perkiraan pelunasan",
+      type: "date",
+    },
+  ];
+
+  const debtStrategyFields: ActionFormDialogField[] = [
+    {
+      name: "strategy",
+      label: "Strategi pelunasan",
+      type: "select",
+      placeholder: "Pilih strategi",
+      required: true,
+      options: [
+        { label: "Debt Snowball (saldo terkecil dulu)", value: "snowball" },
+        { label: "Debt Avalanche (bunga tertinggi dulu)", value: "avalanche" },
+      ],
+    },
+    {
+      name: "extraPayment",
+      label: "Ekstra pembayaran per bulan (IDR)",
+      type: "text",
+      placeholder: "Contoh: 300.000",
+      formatThousands: true,
+      min: 0,
+      step: 1000,
     },
   ];
 
@@ -939,6 +1495,7 @@ export function DashboardClientScreen({
           locale={locale}
           onAddWidget={() => void onCreateGoal()}
           onSelectDateRange={() => void onSelectDateRange()}
+          onOpenDailyLimitSettings={() => void onOpenDailyLimitSettings()}
         />
       );
     }
@@ -961,10 +1518,22 @@ export function DashboardClientScreen({
           locale={locale}
           activeFilter={transactionFilter}
           searchQuery={searchQuery}
-          onFilterChangeAction={setTransactionFilter}
-          onSearchChangeAction={(event) => setSearchQuery(event.target.value)}
+          transactionsPage={pagination.transactionsPage}
+          transactionsPageSize={pagination.pageSize}
+          onTransactionsPageChangeAction={(nextPage) => {
+            setPaginationPage("transactionsPage", nextPage);
+          }}
+          onFilterChangeAction={(filter) => {
+            setTransactionFilter(filter);
+            setPaginationPage("transactionsPage", 1);
+          }}
+          onSearchChangeAction={(event) => {
+            setSearchQuery(event.target.value);
+            setPaginationPage("transactionsPage", 1);
+          }}
           onResetFiltersAction={() => {
             resetTransactionFilters();
+            setPaginationPage("transactionsPage", 1);
           }}
           onAddTransactionAction={() => void onAddTransaction()}
           onSelectDateRangeAction={() => void onSelectDateRange()}
@@ -991,6 +1560,147 @@ export function DashboardClientScreen({
           locale={locale}
           onSelectDateRange={() => void onSelectDateRange()}
           onExportReport={() => void onExportReport()}
+        />
+      );
+    }
+
+    if (screen === "smart-budgeting") {
+      return (
+        <FeatureWorkspaceScreen
+          activeSidebarItemId="smart-budgeting"
+          title="Smart Budgeting"
+          subtitle="Atur anggaran dinamis dengan peringatan over-speed dan rollover otomatis."
+          badgeLabel="Anggaran Dinamis"
+          primaryActionLabel="Set Over-speed Alert"
+          onPrimaryAction={() => void onOpenOverSpeedAlert()}
+          secondaryActionLabel="Konfigurasi Rollover"
+          onSecondaryAction={() => void onOpenRolloverBudget()}
+          metrics={[
+            {
+              label: "Penggunaan batas harian",
+              value: `${Math.round(viewModel.dailyLimit.progressPct)}%`,
+            },
+            {
+              label: "Sisa harian",
+              value: viewModel.dailyLimit.remainingLabel,
+            },
+            {
+              label: "Anggaran tersedia",
+              value: viewModel.summary.availableToSpend,
+            },
+          ]}
+          notes={[
+            "Peringatan over-speed membandingkan laju belanja kategori dengan rata-rata harian bulan berjalan.",
+            "Rollover budget menambahkan sisa anggaran bulan ini ke plafon bulan berikutnya.",
+          ]}
+        />
+      );
+    }
+
+    if (screen === "recurring-bills") {
+      return (
+        <FeatureWorkspaceScreen
+          activeSidebarItemId="recurring-bills"
+          title="Recurring & Bill Management"
+          subtitle="Pantau langganan dan kalender tagihan agar tidak ada pembayaran terlewat."
+          badgeLabel="Tagihan Rutin"
+          primaryActionLabel="Tambah Subscription"
+          onPrimaryAction={() => void onOpenAddSubscription()}
+          secondaryActionLabel="Tambah Tagihan"
+          onSecondaryAction={() => void onOpenAddBill()}
+          metrics={[
+            {
+              label: "Pengeluaran bulanan",
+              value: viewModel.summary.monthlyExpense,
+            },
+            {
+              label: "Saldo tersedia",
+              value: viewModel.summary.availableToSpend,
+            },
+            {
+              label: "Transaksi terbaru",
+              value: `${viewModel.recentTransactions.length} item`,
+            },
+          ]}
+          notes={[
+            "Subscription Tracker menyiapkan pengingat H-3 sebelum saldo terpotong.",
+            "Kalender tagihan membantu Anda melihat jatuh tempo listrik, internet, dan cicilan.",
+          ]}
+        />
+      );
+    }
+
+    if (screen === "financial-health") {
+      return (
+        <FeatureWorkspaceScreen
+          activeSidebarItemId="financial-health"
+          title="Financial Health Score"
+          subtitle="Interpretasi kesehatan keuangan berdasarkan rasio menabung, dana darurat, dan stabilitas beban cicilan."
+          badgeLabel="Health Score"
+          primaryActionLabel="Atur Rentang Data"
+          onPrimaryAction={() => void onSelectDateRange()}
+          secondaryActionLabel="Ekspor Ringkasan"
+          onSecondaryAction={() => void onExportReport()}
+          metrics={[
+            {
+              label: "Total saldo",
+              value: viewModel.summary.totalBalance,
+            },
+            {
+              label: "Pemasukan bulanan",
+              value: viewModel.summary.monthlyIncome,
+            },
+            {
+              label: "Pengeluaran bulanan",
+              value: viewModel.summary.monthlyExpense,
+            },
+          ]}
+          notes={[
+            "Rasio menabung ideal di atas 20% dari pemasukan.",
+            "Dana darurat yang sehat minimal mencakup 3 bulan biaya hidup.",
+            "Debt-to-Income Ratio digunakan untuk mengecek beban cicilan tetap aman.",
+          ]}
+        />
+      );
+    }
+
+    if (screen === "debt-manager") {
+      return (
+        <FeatureWorkspaceScreen
+          activeSidebarItemId="debt-manager"
+          title="Debt Manager"
+          subtitle="Kelola hutang, piutang, dan strategi pelunasan Snowball / Avalanche dalam satu tempat."
+          badgeLabel="Hutang & Piutang"
+          primaryActionLabel="Tambah Hutang"
+          onPrimaryAction={() => void onOpenAddDebt()}
+          secondaryActionLabel="Catat Piutang"
+          onSecondaryAction={() => void onOpenAddReceivable()}
+          metrics={[
+            {
+              label: "Pengeluaran bulan ini",
+              value: viewModel.summary.monthlyExpense,
+            },
+            {
+              label: "Saldo tersedia",
+              value: viewModel.summary.availableToSpend,
+            },
+            {
+              label: "Aktivitas hutang/piutang",
+              value: `${
+                viewModel.recentTransactions.filter((item) => {
+                  const text = `${item.title} ${item.category}`.toLowerCase();
+                  return text.includes("hutang") || text.includes("piutang");
+                }).length
+              } transaksi`,
+            },
+          ]}
+          notes={[
+            "Gunakan log piutang untuk mencatat siapa yang meminjam uang Anda.",
+            "Debt Snowball fokus melunasi saldo terkecil lebih dulu.",
+            "Debt Avalanche fokus melunasi bunga tertinggi lebih dulu.",
+          ]}
+          tertiaryActionLabel="Jalankan Snowball/Avalanche"
+          onTertiaryAction={() => void onOpenRunDebtStrategy()}
         />
       );
     }
@@ -1045,6 +1755,18 @@ export function DashboardClientScreen({
       />
 
       <ActionFormDialog
+        open={dailyLimitDialogOpen}
+        onOpenChangeAction={setDailyLimitDialogOpen}
+        title={copy.dailyLimitDialogTitle}
+        description={copy.dailyLimitDialogDescription}
+        fields={dailyLimitSettingsFields}
+        submitLabel={copy.dailyLimitDialogSubmit}
+        busy={busy}
+        errorMessage={dialogError}
+        onSubmitAction={onSubmitDailyLimitSettings}
+      />
+
+      <ActionFormDialog
         open={openDialog === "add-transaction"}
         onOpenChangeAction={(open) =>
           open ? openDialogById("add-transaction") : closeDialog()
@@ -1086,6 +1808,104 @@ export function DashboardClientScreen({
         onSubmitAction={onSubmitAdjustPlan}
       />
 
+      <ActionFormDialog
+        open={openDialog === "set-over-speed-alert"}
+        onOpenChangeAction={(open) =>
+          open ? openDialogById("set-over-speed-alert") : closeDialog()
+        }
+        title="Set Over-speed Alert"
+        description="Notifikasi jika pengeluaran kategori berjalan terlalu cepat dibanding ritme harian."
+        fields={overSpeedAlertFields}
+        submitLabel="Simpan alert"
+        busy={busy}
+        errorMessage={dialogError}
+        onSubmitAction={onSubmitOverSpeedAlert}
+      />
+
+      <ActionFormDialog
+        open={openDialog === "configure-rollover-budget"}
+        onOpenChangeAction={(open) =>
+          open ? openDialogById("configure-rollover-budget") : closeDialog()
+        }
+        title="Konfigurasi Rollover Budget"
+        description="Sisa anggaran bulan ini akan otomatis menambah plafon bulan depan."
+        fields={rolloverBudgetFields}
+        submitLabel="Simpan rollover"
+        busy={busy}
+        errorMessage={dialogError}
+        onSubmitAction={onSubmitRolloverBudget}
+      />
+
+      <ActionFormDialog
+        open={openDialog === "add-subscription"}
+        onOpenChangeAction={(open) =>
+          open ? openDialogById("add-subscription") : closeDialog()
+        }
+        title="Tambah Subscription"
+        description="Catat layanan langganan dan jadwal debit untuk pengingat H-3."
+        fields={subscriptionFields}
+        submitLabel="Tambah subscription"
+        busy={busy}
+        errorMessage={dialogError}
+        onSubmitAction={onSubmitAddSubscription}
+      />
+
+      <ActionFormDialog
+        open={openDialog === "add-bill"}
+        onOpenChangeAction={(open) =>
+          open ? openDialogById("add-bill") : closeDialog()
+        }
+        title="Tambah Tagihan"
+        description="Tambahkan tagihan rutin agar muncul di kalender jatuh tempo."
+        fields={billFields}
+        submitLabel="Tambah tagihan"
+        busy={busy}
+        errorMessage={dialogError}
+        onSubmitAction={onSubmitAddBill}
+      />
+
+      <ActionFormDialog
+        open={openDialog === "add-debt"}
+        onOpenChangeAction={(open) =>
+          open ? openDialogById("add-debt") : closeDialog()
+        }
+        title="Tambah Hutang"
+        description="Catat cicilan atau hutang agar rencana pelunasan lebih terarah."
+        fields={debtFields}
+        submitLabel="Tambah hutang"
+        busy={busy}
+        errorMessage={dialogError}
+        onSubmitAction={onSubmitAddDebt}
+      />
+
+      <ActionFormDialog
+        open={openDialog === "add-receivable"}
+        onOpenChangeAction={(open) =>
+          open ? openDialogById("add-receivable") : closeDialog()
+        }
+        title="Tambah Piutang"
+        description="Catat uang yang dipinjamkan kepada orang lain."
+        fields={receivableFields}
+        submitLabel="Tambah piutang"
+        busy={busy}
+        errorMessage={dialogError}
+        onSubmitAction={onSubmitAddReceivable}
+      />
+
+      <ActionFormDialog
+        open={openDialog === "run-debt-strategy"}
+        onOpenChangeAction={(open) =>
+          open ? openDialogById("run-debt-strategy") : closeDialog()
+        }
+        title="Jalankan Debt Strategy"
+        description="Pilih Snowball atau Avalanche untuk prioritas pelunasan."
+        fields={debtStrategyFields}
+        submitLabel="Jalankan strategi"
+        busy={busy}
+        errorMessage={dialogError}
+        onSubmitAction={onSubmitRunDebtStrategy}
+      />
+
       {(busy || message) && (
         <div className="fixed bottom-4 right-4 z-50 rounded-xl border border-border bg-surface px-3 py-2 text-xs text-foreground shadow-sm">
           {busy ? (
@@ -1103,6 +1923,105 @@ export function DashboardClientScreen({
         </div>
       )}
     </>
+  );
+}
+
+type FeatureWorkspaceScreenProps = {
+  readonly activeSidebarItemId:
+    | "smart-budgeting"
+    | "recurring-bills"
+    | "financial-health"
+    | "debt-manager";
+  readonly title: string;
+  readonly subtitle: string;
+  readonly badgeLabel: string;
+  readonly primaryActionLabel: string;
+  readonly onPrimaryAction: () => void;
+  readonly secondaryActionLabel?: string;
+  readonly onSecondaryAction?: () => void;
+  readonly tertiaryActionLabel?: string;
+  readonly onTertiaryAction?: () => void;
+  readonly metrics: ReadonlyArray<{ label: string; value: string }>;
+  readonly notes: ReadonlyArray<string>;
+};
+
+function FeatureWorkspaceScreen({
+  activeSidebarItemId,
+  title,
+  subtitle,
+  badgeLabel,
+  primaryActionLabel,
+  onPrimaryAction,
+  secondaryActionLabel,
+  onSecondaryAction,
+  tertiaryActionLabel,
+  onTertiaryAction,
+  metrics,
+  notes,
+}: FeatureWorkspaceScreenProps) {
+  return (
+    <SidebarPageShell
+      activeSidebarItemId={activeSidebarItemId}
+      title={title}
+      subtitle={subtitle}
+      badgeLabel={badgeLabel}
+      headerActions={
+        <>
+          {secondaryActionLabel ? (
+            <ActionPill
+              label={secondaryActionLabel}
+              tone="outline"
+              onClick={onSecondaryAction}
+            />
+          ) : null}
+          <ActionPill
+            label={primaryActionLabel}
+            tone="primary"
+            onClick={onPrimaryAction}
+          />
+        </>
+      }
+    >
+      <div className="space-y-6">
+        {tertiaryActionLabel ? (
+          <ActionPill
+            label={tertiaryActionLabel}
+            tone="outline"
+            onClick={onTertiaryAction}
+          />
+        ) : null}
+
+        <section className="grid gap-6 md:grid-cols-3">
+          {metrics.map((metric) => (
+            <DashboardCard
+              key={metric.label}
+              title={metric.label}
+              subtitle="Ringkasan"
+            >
+              <p className="text-xl font-semibold text-foreground">
+                {metric.value}
+              </p>
+            </DashboardCard>
+          ))}
+        </section>
+
+        <DashboardCard
+          title="Rencana Implementasi"
+          subtitle="Fitur dan perilaku yang sudah tersambung di dashboard client flow"
+        >
+          <ul className="space-y-2 text-sm text-foreground">
+            {notes.map((note, index) => (
+              <li
+                key={`${note}-${index}`}
+                className="rounded-xl border border-border bg-surface-2 px-3 py-2.5"
+              >
+                {note}
+              </li>
+            ))}
+          </ul>
+        </DashboardCard>
+      </div>
+    </SidebarPageShell>
   );
 }
 
@@ -1146,6 +2065,18 @@ function toPositiveNumber(value: string): number | null {
   return parsed;
 }
 
+function toPositiveNumberFromUnknown(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number(normalizeAmountInput(value))
+        : Number.NaN;
+
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
 function toNonNegativeNumber(value: string): number | null {
   const parsed = Number(normalizeAmountInput(value));
   if (!Number.isFinite(parsed) || parsed < 0) return null;
@@ -1163,18 +2094,12 @@ function parseOptionalPositive(value: string): number | undefined {
 }
 
 function normalizeAmountInput(value: string): string {
-  return value.replace(/,/g, "").trim();
+  return value.replace(/[.,\s]/g, "").trim();
 }
 
-function normalizeDirection(
-  value: string,
-): "income" | "expense" | "transfer" | undefined {
+function normalizeDirection(value: string): "income" | "expense" | undefined {
   const normalized = value.trim().toLowerCase();
-  if (
-    normalized === "income" ||
-    normalized === "expense" ||
-    normalized === "transfer"
-  ) {
+  if (normalized === "income" || normalized === "expense") {
     return normalized;
   }
   return undefined;
@@ -1186,12 +2111,86 @@ function toIsoDate(value: string): string | undefined {
   return date.toISOString().slice(0, 10);
 }
 
-function nextDateMonths(monthsAhead: number): string {
-  const now = new Date();
-  const target = new Date(
-    now.getFullYear(),
-    now.getMonth() + monthsAhead,
-    now.getDate(),
+function formatIdr(amount: number): string {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function normalizeQuickRangePreset(
+  value: string,
+): "today" | "week" | "monthly" | "custom" {
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "today" ||
+    normalized === "week" ||
+    normalized === "monthly" ||
+    normalized === "custom"
+  ) {
+    return normalized;
+  }
+  return "today";
+}
+
+function getPresetDateRange(
+  preset: "today" | "week" | "monthly",
+  now: Date,
+): { from: string; to: string } {
+  if (preset === "today") {
+    const today = toLocalIsoDate(now);
+    return { from: today, to: today };
+  }
+
+  if (preset === "week") {
+    const day = now.getDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const start = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + mondayOffset,
+    );
+    const end = new Date(
+      start.getFullYear(),
+      start.getMonth(),
+      start.getDate() + 6,
+    );
+
+    return {
+      from: toLocalIsoDate(start),
+      to: toLocalIsoDate(end),
+    };
+  }
+
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  return {
+    from: toLocalIsoDate(monthStart),
+    to: toLocalIsoDate(monthEnd),
+  };
+}
+
+function toLocalIsoDate(value: Date): string {
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, "0");
+  const day = `${value.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function isIsoDateString(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  return !Number.isNaN(new Date(value).getTime());
+}
+
+function isWithinThreeMonths(fromISO: string, toISO: string): boolean {
+  const from = new Date(fromISO);
+  const to = new Date(toISO);
+  const maxTo = new Date(
+    from.getFullYear(),
+    from.getMonth() + 3,
+    from.getDate(),
   );
-  return target.toISOString().slice(0, 10);
+  return to.getTime() <= maxTo.getTime();
 }

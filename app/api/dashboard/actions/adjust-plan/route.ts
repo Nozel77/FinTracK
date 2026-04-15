@@ -18,8 +18,6 @@ type AdjustPlanRequestBody = {
   readonly userId?: string;
   readonly goalId: string;
   readonly addSavedAmount?: number;
-  readonly newTarget?: number;
-  readonly newDeadline?: string;
 };
 
 export async function POST(request: Request): Promise<Response> {
@@ -50,8 +48,6 @@ export async function POST(request: Request): Promise<Response> {
       userId: authorizedUserId,
       goalId: body.goalId,
       addSavedAmount: body.addSavedAmount,
-      newTarget: body.newTarget,
-      newDeadline: body.newDeadline,
     });
 
     return jsonSuccess(result, { message: result.message });
@@ -92,8 +88,6 @@ function parseAdjustPlanRequestBody(value: unknown): AdjustPlanRequestBody {
   const goalId = getRequiredString(payload, "goalId", 128);
 
   const addSavedAmount = getOptionalPositiveNumber(payload, "addSavedAmount");
-  const newTarget = getOptionalPositiveNumber(payload, "newTarget");
-  const newDeadline = getOptionalISODate(payload, "newDeadline");
 
   if (Object.prototype.hasOwnProperty.call(payload, "monthlyContribution")) {
     throw new RequestBodyError(
@@ -106,26 +100,40 @@ function parseAdjustPlanRequestBody(value: unknown): AdjustPlanRequestBody {
     );
   }
 
-  if (
-    addSavedAmount === undefined &&
-    newTarget === undefined &&
-    newDeadline === undefined
-  ) {
+  if (Object.prototype.hasOwnProperty.call(payload, "newTarget")) {
     throw new RequestBodyError(
-      "At least one adjustment field is required: addSavedAmount, newTarget, or newDeadline.",
+      '"newTarget" is no longer supported. You can only update saved progress using "addSavedAmount".',
       {
         status: 422,
         code: "invalid_body",
+        details: { field: "newTarget" },
       },
     );
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "newDeadline")) {
+    throw new RequestBodyError(
+      '"newDeadline" is no longer supported. You can only update saved progress using "addSavedAmount".',
+      {
+        status: 422,
+        code: "invalid_body",
+        details: { field: "newDeadline" },
+      },
+    );
+  }
+
+  if (addSavedAmount === undefined) {
+    throw new RequestBodyError('"addSavedAmount" is required.', {
+      status: 422,
+      code: "invalid_body",
+      details: { field: "addSavedAmount" },
+    });
   }
 
   return {
     userId,
     goalId,
     addSavedAmount,
-    newTarget,
-    newDeadline,
   };
 }
 
@@ -235,33 +243,6 @@ function getOptionalPositiveNumber(
   }
 
   return parsed;
-}
-
-function getOptionalISODate(
-  payload: Record<string, unknown>,
-  fieldName: string,
-): string | undefined {
-  const raw = payload[fieldName];
-  if (raw === undefined || raw === null) return undefined;
-
-  if (typeof raw !== "string") {
-    throw new RequestBodyError(`"${fieldName}" must be a date string.`, {
-      status: 422,
-      code: "invalid_body",
-      details: { field: fieldName },
-    });
-  }
-
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) {
-    throw new RequestBodyError(`"${fieldName}" must be a valid date value.`, {
-      status: 422,
-      code: "invalid_body",
-      details: { field: fieldName },
-    });
-  }
-
-  return parsed.toISOString().slice(0, 10);
 }
 
 function mapStatusToApiErrorCode(

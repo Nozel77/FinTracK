@@ -2,8 +2,6 @@
 
 import type { MouseEventHandler } from "react";
 
-import { detectClientLocale } from "@/src/shared/i18n/locale";
-
 type DashboardHeaderSectionProps = {
   readonly title?: string;
   readonly subtitle?: string;
@@ -15,11 +13,20 @@ type DashboardHeaderSectionProps = {
   readonly className?: string;
 };
 
-const HEADER_COPY = {
+type HeaderLocale = "en" | "id";
+
+const HEADER_COPY: Record<
+  HeaderLocale,
+  {
+    readonly title: string;
+    readonly subtitle: string;
+    readonly addWidget: string;
+  }
+> = {
   en: {
-    title: "Dashboard",
-    subtitle: "Manage your payments and transactions in one click",
-    addWidget: "Add widget",
+    title: "Dasbor",
+    subtitle: "Kelola pembayaran dan transaksi Anda dalam satu klik",
+    addWidget: "Tambah widget",
   },
   id: {
     title: "Dasbor",
@@ -27,8 +34,6 @@ const HEADER_COPY = {
     addWidget: "Tambah widget",
   },
 } as const;
-
-type HeaderLocale = keyof typeof HEADER_COPY;
 
 export function DashboardHeaderSection({
   title,
@@ -40,7 +45,7 @@ export function DashboardHeaderSection({
   onSelectDateRange,
   className,
 }: DashboardHeaderSectionProps) {
-  const locale: HeaderLocale = explicitLocale ?? detectClientLocale("en");
+  const locale: HeaderLocale = explicitLocale ?? "id";
   const copy = HEADER_COPY[locale];
   const resolvedTitle = title ?? copy.title;
   const resolvedSubtitle = subtitle ?? copy.subtitle;

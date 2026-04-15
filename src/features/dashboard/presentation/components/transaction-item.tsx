@@ -49,7 +49,7 @@ function formatMoney(amount: number, currency: string): string {
 }
 
 function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat("id-ID", {
     month: "short",
     day: "numeric",
     hour: "2-digit",

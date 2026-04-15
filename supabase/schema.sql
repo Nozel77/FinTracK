@@ -166,8 +166,32 @@ create table if not exists public.user_settings (
   push_notifications boolean not null default true,
   monthly_report boolean not null default false,
   compact_mode boolean not null default false,
+  daily_transaction_limit numeric(14,2) not null default 10000000 check (daily_transaction_limit > 0),
   updated_at timestamptz not null default now()
 );
+
+-- =========================
+-- User settings backfill (safe for existing databases)
+-- =========================
+alter table public.user_settings
+  add column if not exists daily_transaction_limit numeric(14,2);
+
+update public.user_settings
+set daily_transaction_limit = 10000000
+where daily_transaction_limit is null or daily_transaction_limit <= 0;
+
+alter table public.user_settings
+  alter column daily_transaction_limit set default 10000000;
+
+alter table public.user_settings
+  alter column daily_transaction_limit set not null;
+
+alter table public.user_settings
+  drop constraint if exists user_settings_daily_transaction_limit_check;
+
+alter table public.user_settings
+  add constraint user_settings_daily_transaction_limit_check
+  check (daily_transaction_limit > 0);
 
 -- =========================
 -- Indexes
@@ -300,11 +324,11 @@ begin
   -- user settings
   insert into public.user_settings (
     user_id, full_name, email, phone, role, currency, timezone, language, start_of_week,
-    email_alerts, push_notifications, monthly_report, compact_mode, updated_at
+    email_alerts, push_notifications, monthly_report, compact_mode, daily_transaction_limit, updated_at
   ) values (
     v_user_id, 'Alex Morgan', 'alex.morgan@fintrack.app', '+62 812-0000-0000', 'Owner',
     'IDR', 'UTC+07:00 (Jakarta)', 'English (US)', 'Monday',
-    true, true, false, false, now()
+    true, true, false, false, 10000000, now()
   )
   on conflict (user_id) do update set
     full_name = excluded.full_name,
@@ -319,6 +343,7 @@ begin
     push_notifications = excluded.push_notifications,
     monthly_report = excluded.monthly_report,
     compact_mode = excluded.compact_mode,
+    daily_transaction_limit = excluded.daily_transaction_limit,
     updated_at = now();
 
   -- shortcuts

@@ -6,7 +6,11 @@ export type SidebarRoutePath =
   | "/transactions"
   | "/goals"
   | "/analytics"
-  | "/settings";
+  | "/settings"
+  | "/smart-budgeting"
+  | "/recurring-bills"
+  | "/financial-health"
+  | "/debt-manager";
 
 export const SIDEBAR_ROUTE_MAP: Readonly<
   Record<DashboardSidebarItemId, SidebarRoutePath>
@@ -17,6 +21,10 @@ export const SIDEBAR_ROUTE_MAP: Readonly<
   goals: "/goals",
   analytics: "/analytics",
   settings: "/settings",
+  "smart-budgeting": "/smart-budgeting",
+  "recurring-bills": "/recurring-bills",
+  "financial-health": "/financial-health",
+  "debt-manager": "/debt-manager",
 };
 
 export const SIDEBAR_ITEM_IDS: ReadonlyArray<DashboardSidebarItemId> = [
@@ -26,9 +34,15 @@ export const SIDEBAR_ITEM_IDS: ReadonlyArray<DashboardSidebarItemId> = [
   "goals",
   "analytics",
   "settings",
+  "smart-budgeting",
+  "recurring-bills",
+  "financial-health",
+  "debt-manager",
 ];
 
-export function getSidebarRoutePath(itemId: DashboardSidebarItemId): SidebarRoutePath {
+export function getSidebarRoutePath(
+  itemId: DashboardSidebarItemId,
+): SidebarRoutePath {
   return SIDEBAR_ROUTE_MAP[itemId];
 }
 
@@ -46,7 +60,9 @@ export function getSidebarItemIdByPathname(
   return null;
 }
 
-export function isSidebarRoutePath(pathname: string): pathname is SidebarRoutePath {
+export function isSidebarRoutePath(
+  pathname: string,
+): pathname is SidebarRoutePath {
   return getSidebarItemIdByPathname(pathname) !== null;
 }
 

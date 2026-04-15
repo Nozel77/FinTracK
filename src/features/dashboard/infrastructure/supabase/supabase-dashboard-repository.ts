@@ -31,6 +31,7 @@ type SupabaseDashboardRepositoryOptions = {
 };
 
 const DEFAULT_CURRENCY = "IDR" as const;
+const DEFAULT_DAILY_TRANSACTION_LIMIT = 10_000_000;
 
 export class SupabaseDashboardRepository implements DashboardRepository {
   private readonly userId?: string;
@@ -269,12 +270,20 @@ export class SupabaseDashboardRepository implements DashboardRepository {
     range: DateRange,
     transactions: ReadonlyArray<Transaction>,
   ): Promise<DailyTransactionLimit> {
-    const { data, error } = await client
-      .from("daily_transaction_limits")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("date", range.to)
-      .maybeSingle();
+    const [{ data, error }, { data: settings, error: settingsError }] =
+      await Promise.all([
+        client
+          .from("daily_transaction_limits")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("date", range.to)
+          .maybeSingle(),
+        client
+          .from("user_settings")
+          .select("daily_transaction_limit")
+          .eq("user_id", userId)
+          .maybeSingle(),
+      ]);
 
     if (error) {
       throw new Error(
@@ -282,10 +291,23 @@ export class SupabaseDashboardRepository implements DashboardRepository {
       );
     }
 
+    if (settingsError) {
+      throw new Error(
+        `[supabase-dashboard-repository] Failed to load user settings: ${settingsError.message}`,
+      );
+    }
+
+    const configuredLimit =
+      typeof settings?.daily_transaction_limit === "number" &&
+      Number.isFinite(settings.daily_transaction_limit) &&
+      settings.daily_transaction_limit > 0
+        ? settings.daily_transaction_limit
+        : DEFAULT_DAILY_TRANSACTION_LIMIT;
+
     if (data) {
       return {
         used: toMoney(data.used, data.currency),
-        limit: toMoney(data.limit, data.currency),
+        limit: toMoney(configuredLimit, data.currency),
       };
     }
 
@@ -298,7 +320,7 @@ export class SupabaseDashboardRepository implements DashboardRepository {
 
     return {
       used: toMoney(used),
-      limit: toMoney(Math.max(used, 10_000_000)),
+      limit: toMoney(configuredLimit),
     };
   }
 }

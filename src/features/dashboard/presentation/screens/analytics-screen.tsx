@@ -35,7 +35,7 @@ const analyticsTheme: SidebarPageThemeOverrides = {
 
 export function AnalyticsScreen({
   viewModel,
-  locale = "en",
+  locale = "id",
   onSelectDateRange,
   onExportReport,
 }: AnalyticsScreenProps) {

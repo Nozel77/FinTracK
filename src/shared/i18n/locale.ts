@@ -2,7 +2,7 @@ export const SUPPORTED_LOCALES = ["en", "id"] as const;
 
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 
-export const DEFAULT_LOCALE: Locale = "en";
+export const DEFAULT_LOCALE: Locale = "id";
 
 export const LOCALE_LABEL: Record<Locale, string> = {
   en: "English",

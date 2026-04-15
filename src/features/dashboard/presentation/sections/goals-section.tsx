@@ -1,5 +1,10 @@
+"use client";
+
+import { useState } from "react";
+
 import type { DashboardViewModel } from "../view-models/dashboard-view-model";
 import { DashboardCard } from "../components/dashboard-card";
+import { PaginationControls } from "../components/pagination-controls";
 import { whenLocale, type Locale } from "@/src/shared/i18n/locale";
 
 type GoalViewModel = DashboardViewModel["goals"][number];
@@ -45,6 +50,13 @@ export function GoalsSection({
     },
   });
 
+  const [page, setPage] = useState(1);
+  const pageSize = 5;
+  const totalPages = Math.max(1, Math.ceil(goals.length / pageSize));
+  const currentPage = clamp(page, 1, totalPages);
+  const startIndex = (currentPage - 1) * pageSize;
+  const pagedGoals = goals.slice(startIndex, startIndex + pageSize);
+
   return (
     <DashboardCard
       title={copy.title}
@@ -64,11 +76,21 @@ export function GoalsSection({
           {copy.emptyGoals}
         </p>
       ) : (
-        <ul role="list" className="divide-y divide-[var(--border)]">
-          {goals.map((goal) => (
-            <GoalRow key={goal.id} goal={goal} copy={copy} />
-          ))}
-        </ul>
+        <div className="space-y-4">
+          <ul role="list" className="divide-y divide-[var(--border)]">
+            {pagedGoals.map((goal) => (
+              <GoalRow key={goal.id} goal={goal} copy={copy} />
+            ))}
+          </ul>
+
+          <PaginationControls
+            page={currentPage}
+            pageSize={pageSize}
+            totalItems={goals.length}
+            onPageChangeAction={setPage}
+            locale={locale}
+          />
+        </div>
       )}
     </DashboardCard>
   );
@@ -88,7 +110,7 @@ function GoalRow({ goal, copy }: GoalRowProps) {
         <div
           className="grid h-10 w-10 place-items-center rounded-full"
           style={{
-            background: `conic-gradient(var(--primary) ${progressSafe}%, var(--blue-100) ${progressSafe}% 100%)`,
+            background: `conic-gradient(var(--primary) ${progressSafe}%, var(--primary-soft) ${progressSafe}% 100%)`,
           }}
           aria-hidden
         >

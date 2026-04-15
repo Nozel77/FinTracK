@@ -39,6 +39,7 @@ export type ActionFormDialogField = {
   min?: number;
   max?: number;
   step?: number;
+  formatThousands?: boolean;
 };
 
 export type ActionFormValues = Record<string, string>;
@@ -63,14 +64,24 @@ export function ActionFormDialog({
   title,
   description,
   fields,
-  submitLabel = "Submit",
-  cancelLabel = "Cancel",
+  submitLabel = "Simpan",
+  cancelLabel = "Batal",
   busy = false,
   closeOnSubmit = true,
   errorMessage,
   onSubmitAction,
 }: ActionFormDialogProps) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [formattedValues, setFormattedValues] = useState<
+    Record<string, string>
+  >({});
+
+  const handleFormattedInputChange = (fieldName: string, rawValue: string) => {
+    setFormattedValues((previous) => ({
+      ...previous,
+      [fieldName]: formatThousands(rawValue),
+    }));
+  };
 
   const validateValues = (values: ActionFormValues) => {
     const nextErrors: Record<string, string> = {};
@@ -78,7 +89,7 @@ export function ActionFormDialog({
     for (const field of fields) {
       const currentValue = (values[field.name] ?? "").trim();
       if (field.required && !currentValue) {
-        nextErrors[field.name] = `${field.label} is required.`;
+        nextErrors[field.name] = `${field.label} wajib diisi.`;
       }
     }
 
@@ -90,7 +101,15 @@ export function ActionFormDialog({
 
     return fields.reduce<ActionFormValues>((acc, field) => {
       const rawValue = formData.get(field.name);
-      acc[field.name] = typeof rawValue === "string" ? rawValue : "";
+      const asString = typeof rawValue === "string" ? rawValue : "";
+
+      if (field.formatThousands) {
+        const currentFormatted = formattedValues[field.name] ?? asString;
+        acc[field.name] = normalizeThousandsInput(currentFormatted);
+        return acc;
+      }
+
+      acc[field.name] = asString;
       return acc;
     }, {});
   };
@@ -131,6 +150,11 @@ export function ActionFormDialog({
           {fields.map((field) => {
             const fieldId = `action-form-${field.name}`;
             const fieldError = fieldErrors[field.name];
+            const useThousandsFormat =
+              field.formatThousands &&
+              (field.type === undefined ||
+                field.type === "text" ||
+                field.type === "number");
 
             return (
               <div key={field.name} className="space-y-1.5">
@@ -143,8 +167,8 @@ export function ActionFormDialog({
                   <textarea
                     id={fieldId}
                     name={field.name}
-                    defaultValue={field.defaultValue ?? ""}
-                    placeholder={field.placeholder}
+                    defaultValue=""
+                    placeholder={field.placeholder ?? field.defaultValue}
                     disabled={busy}
                     className={cn(
                       "min-h-24 w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-60",
@@ -154,14 +178,16 @@ export function ActionFormDialog({
                   <select
                     id={fieldId}
                     name={field.name}
-                    defaultValue={field.defaultValue ?? ""}
+                    defaultValue=""
                     disabled={busy}
                     className={cn(
-                      "flex h-10 w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:border-primary",
+                      "flex h-10 w-full cursor-pointer rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:border-primary",
                     )}
                   >
                     <option value="">
-                      {field.placeholder ?? `Select ${field.label}`}
+                      {field.placeholder ??
+                        field.defaultValue ??
+                        `Pilih ${field.label}`}
                     </option>
                     {(field.options ?? []).map((option) => (
                       <option key={option.value} value={option.value}>
@@ -169,6 +195,24 @@ export function ActionFormDialog({
                       </option>
                     ))}
                   </select>
+                ) : useThousandsFormat ? (
+                  <Input
+                    id={fieldId}
+                    name={field.name}
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    pattern="[0-9.]*"
+                    min={field.min}
+                    max={field.max}
+                    step={field.step}
+                    value={formattedValues[field.name] ?? ""}
+                    placeholder={field.placeholder ?? field.defaultValue}
+                    disabled={busy}
+                    onChange={(event) =>
+                      handleFormattedInputChange(field.name, event.target.value)
+                    }
+                  />
                 ) : (
                   <Input
                     id={fieldId}
@@ -177,8 +221,8 @@ export function ActionFormDialog({
                     min={field.min}
                     max={field.max}
                     step={field.step}
-                    defaultValue={field.defaultValue ?? ""}
-                    placeholder={field.placeholder}
+                    defaultValue=""
+                    placeholder={field.placeholder ?? field.defaultValue}
                     disabled={busy}
                   />
                 )}
@@ -209,13 +253,23 @@ export function ActionFormDialog({
               {cancelLabel}
             </Button>
             <Button type="submit" disabled={busy}>
-              {busy ? "Processing..." : submitLabel}
+              {busy ? "Memproses..." : submitLabel}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
   );
+}
+
+function normalizeThousandsInput(value: string): string {
+  return value.replace(/\./g, "").replace(/\D/g, "").trim();
+}
+
+function formatThousands(value: string): string {
+  const digitsOnly = normalizeThousandsInput(value);
+  if (!digitsOnly) return "";
+  return digitsOnly.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
 function cn(...classes: Array<string | false | null | undefined>): string {

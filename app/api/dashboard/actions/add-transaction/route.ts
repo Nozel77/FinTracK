@@ -1,4 +1,3 @@
-import type { TransactionDirection } from "@/src/features/dashboard/domain/dashboard";
 import { createDashboardActionService } from "@/src/features/dashboard/infrastructure/supabase/services/dashboard-action-service";
 import {
   errorToObject,
@@ -19,7 +18,7 @@ type AddTransactionRouteBody = {
   readonly userId?: string;
   readonly title: string;
   readonly category: string;
-  readonly direction: TransactionDirection;
+  readonly direction: "income" | "expense";
   readonly amount: number;
   readonly accountId?: string;
   readonly occurredAt?: string;
@@ -189,12 +188,12 @@ function getOptionalString(
 function getRequiredDirection(
   payload: Record<string, unknown>,
   fieldName: string,
-): TransactionDirection {
+): "income" | "expense" {
   const value = payload[fieldName];
 
-  if (value !== "income" && value !== "expense" && value !== "transfer") {
+  if (value !== "income" && value !== "expense") {
     throw new RequestBodyError(
-      `"${fieldName}" must be one of: income, expense, transfer.`,
+      `"${fieldName}" must be one of: income, expense.`,
       {
         status: 422,
         code: "invalid_body",

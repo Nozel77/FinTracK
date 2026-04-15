@@ -29,6 +29,7 @@ type SaveSettingsRequestBody = {
     readonly timezone?: string;
     readonly language?: string;
     readonly startOfWeek?: StartOfWeek;
+    readonly dailyTransactionLimit?: number;
   };
   readonly toggles?: {
     readonly emailAlerts?: boolean;
@@ -172,6 +173,10 @@ function parsePreferences(
     "preferences.language",
     80,
   );
+  const dailyTransactionLimit = getOptionalPositiveNumber(
+    preferences.dailyTransactionLimit,
+    "preferences.dailyTransactionLimit",
+  );
 
   const startOfWeekRaw = preferences.startOfWeek;
   let startOfWeek: StartOfWeek | undefined;
@@ -184,7 +189,13 @@ function parsePreferences(
     startOfWeek = startOfWeekRaw;
   }
 
-  if (!currency && !timezone && !language && !startOfWeek) {
+  if (
+    !currency &&
+    !timezone &&
+    !language &&
+    !startOfWeek &&
+    dailyTransactionLimit === undefined
+  ) {
     return undefined;
   }
 
@@ -193,6 +204,7 @@ function parsePreferences(
     timezone,
     language,
     startOfWeek,
+    dailyTransactionLimit,
   };
 }
 
@@ -260,6 +272,26 @@ function getOptionalString(
   }
 
   return trimmed;
+}
+
+function getOptionalPositiveNumber(
+  value: unknown,
+  fieldName: string,
+): number | undefined {
+  if (value === undefined || value === null) return undefined;
+
+  const numeric =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number(value)
+        : Number.NaN;
+
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    throw new Error(`"${fieldName}" must be a positive number.`);
+  }
+
+  return numeric;
 }
 
 function getOptionalBoolean(

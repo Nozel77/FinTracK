@@ -341,6 +341,7 @@ export type Database = {
           push_notifications: boolean;
           monthly_report: boolean;
           compact_mode: boolean;
+          daily_transaction_limit: number;
           updated_at: string;
         };
         Insert: {
@@ -357,6 +358,7 @@ export type Database = {
           push_notifications?: boolean;
           monthly_report?: boolean;
           compact_mode?: boolean;
+          daily_transaction_limit?: number;
           updated_at?: string;
         };
         Update: {
@@ -373,6 +375,7 @@ export type Database = {
           push_notifications?: boolean;
           monthly_report?: boolean;
           compact_mode?: boolean;
+          daily_transaction_limit?: number;
           updated_at?: string;
         };
         Relationships: [];
@@ -401,18 +404,14 @@ export type Database = {
 
 export type PublicSchema = Database["public"];
 
-export type Tables<
-  T extends keyof PublicSchema["Tables"]
-> = PublicSchema["Tables"][T]["Row"];
+export type Tables<T extends keyof PublicSchema["Tables"]> =
+  PublicSchema["Tables"][T]["Row"];
 
-export type Inserts<
-  T extends keyof PublicSchema["Tables"]
-> = PublicSchema["Tables"][T]["Insert"];
+export type Inserts<T extends keyof PublicSchema["Tables"]> =
+  PublicSchema["Tables"][T]["Insert"];
 
-export type Updates<
-  T extends keyof PublicSchema["Tables"]
-> = PublicSchema["Tables"][T]["Update"];
+export type Updates<T extends keyof PublicSchema["Tables"]> =
+  PublicSchema["Tables"][T]["Update"];
 
-export type Enums<
-  T extends keyof PublicSchema["Enums"]
-> = PublicSchema["Enums"][T];
+export type Enums<T extends keyof PublicSchema["Enums"]> =
+  PublicSchema["Enums"][T];

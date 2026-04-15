@@ -3,6 +3,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -45,6 +46,7 @@ type CSSVariables = CSSProperties & Partial<Record<`--${string}`, string>>;
 type SidebarThemeMode = "light" | "dark";
 
 const THEME_MODE_STORAGE_KEY = "dashboard.theme";
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "dashboard.sidebar.collapsed";
 
 const DARK_THEME_VARS: CSSVariables = {
   "--background": "#0b1220",
@@ -73,31 +75,57 @@ export function SidebarPageShell({
   contentClassName,
   sidebarClassName,
 }: SidebarPageShellProps) {
-  const [themeMode, setThemeMode] = useState<SidebarThemeMode>(() => {
-    if (typeof window === "undefined") return "light";
+  const [themeMode, setThemeMode] = useState<SidebarThemeMode>("light");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
 
-    const stored = window.localStorage.getItem(THEME_MODE_STORAGE_KEY);
-    if (stored === "light" || stored === "dark") return stored;
-
-    return window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
+    const storedCollapsed = window.localStorage.getItem(
+      SIDEBAR_COLLAPSED_STORAGE_KEY,
+    );
+    return storedCollapsed === "true";
   });
+  const hasHydratedThemeRef = useRef(false);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(THEME_MODE_STORAGE_KEY);
+
+    const nextThemeMode: SidebarThemeMode =
+      stored === "light" || stored === "dark"
+        ? stored
+        : window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light";
+
+    hasHydratedThemeRef.current = true;
+    window.localStorage.setItem(THEME_MODE_STORAGE_KEY, nextThemeMode);
+    document.documentElement.dataset.theme = nextThemeMode;
+
+    if (nextThemeMode !== "light") {
+      queueMicrotask(() => {
+        setThemeMode(nextThemeMode);
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydratedThemeRef.current) return;
+
     window.localStorage.setItem(THEME_MODE_STORAGE_KEY, themeMode);
     document.documentElement.dataset.theme = themeMode;
   }, [themeMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      SIDEBAR_COLLAPSED_STORAGE_KEY,
+      isSidebarCollapsed ? "true" : "false",
+    );
+  }, [isSidebarCollapsed]);
 
   const handleThemeToggleAction = () => {
     setThemeMode((previous) => (previous === "dark" ? "light" : "dark"));
   };
 
-  const themedStyle = useMemo(
-    () => toThemeVariables(themeOverrides, themeMode),
-    [themeOverrides, themeMode],
-  );
+  const themedStyle = useMemo(() => toThemeVariables(themeMode), [themeMode]);
 
   return (
     <div
@@ -116,13 +144,16 @@ export function SidebarPageShell({
               "hidden lg:fixed lg:left-6 lg:top-6 lg:flex lg:h-[calc(100vh-3rem)]",
               sidebarClassName,
             )}
+            collapsed={isSidebarCollapsed}
+            onCollapsedChangeAction={setIsSidebarCollapsed}
             themeMode={themeMode}
             onThemeToggleAction={handleThemeToggleAction}
           />
 
           <section
             className={cx(
-              "sidebar-shell-content min-w-0 space-y-6 p-4 sm:p-6 lg:ml-68 lg:transition-[margin-left] lg:duration-200",
+              "sidebar-shell-content min-w-0 space-y-6 p-4 sm:p-6 lg:transition-[margin-left] lg:duration-200",
+              isSidebarCollapsed ? "lg:ml-27" : "lg:ml-68",
               contentClassName,
             )}
           >
@@ -162,30 +193,13 @@ export function SidebarPageShell({
 }
 
 function toThemeVariables(
-  overrides?: SidebarPageThemeOverrides,
   themeMode: SidebarThemeMode = "light",
 ): CSSVariables | undefined {
-  const vars: CSSVariables = {};
-
   if (themeMode === "dark") {
-    Object.assign(vars, DARK_THEME_VARS);
-  } else if (overrides) {
-    if (overrides.background) vars["--background"] = overrides.background;
-    if (overrides.foreground) vars["--foreground"] = overrides.foreground;
-    if (overrides.surface) vars["--surface"] = overrides.surface;
-    if (overrides.surface2) vars["--surface-2"] = overrides.surface2;
-    if (overrides.border) vars["--border"] = overrides.border;
-    if (overrides.muted) vars["--muted"] = overrides.muted;
-    if (overrides.primary) vars["--primary"] = overrides.primary;
-    if (overrides.primaryHover)
-      vars["--primary-hover"] = overrides.primaryHover;
-    if (overrides.primarySoft) vars["--primary-soft"] = overrides.primarySoft;
-    if (overrides.accent) vars["--accent"] = overrides.accent;
-    if (overrides.success) vars["--success"] = overrides.success;
-    if (overrides.danger) vars["--danger"] = overrides.danger;
+    return DARK_THEME_VARS;
   }
 
-  return Object.keys(vars).length > 0 ? vars : undefined;
+  return undefined;
 }
 
 function cx(...classNames: Array<string | false | null | undefined>): string {

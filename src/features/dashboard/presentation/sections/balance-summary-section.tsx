@@ -53,12 +53,12 @@ export function BalanceSummarySection({
         <SummaryMiniCard
           label={copy.monthlyExpense}
           value={summary.monthlyExpense}
-          toneClassName="text-(--blue-700)"
+          toneClassName="text-accent"
         />
         <SummaryMiniCard
           label={copy.availableToSpend}
           value={summary.availableToSpend}
-          toneClassName="text-(--blue-800) sm:col-span-2"
+          toneClassName="text-foreground sm:col-span-2"
         />
       </div>
     </DashboardCard>

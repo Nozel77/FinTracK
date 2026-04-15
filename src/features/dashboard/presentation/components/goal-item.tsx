@@ -12,8 +12,8 @@ export function GoalItem({ goal, onAdjustPlanAction }: GoalItemProps) {
     <li className="relative flex items-center justify-between gap-4 py-4 pr-11">
       <button
         type="button"
-        aria-label={`Adjust plan for ${goal.name}`}
-        title="Adjust plan"
+        aria-label={`Update progres tabungan untuk ${goal.name}`}
+        title="Update progres tabungan"
         className="absolute right-0 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
         onClick={() => onAdjustPlanAction?.(goal.id)}
       >
@@ -38,17 +38,17 @@ export function GoalItem({ goal, onAdjustPlanAction }: GoalItemProps) {
             {goal.name}
           </p>
           <p className="text-xs text-[var(--muted)]">
-            Deadline: {goal.deadlineLabel}
+            Tenggat: {goal.deadlineLabel}
           </p>
         </div>
       </div>
 
       <div className="flex min-w-[130px] flex-col items-end">
-        <p className="text-xs text-[var(--muted)]">Saved up</p>
+        <p className="text-xs text-[var(--muted)]">Terkumpul</p>
         <p className="text-sm font-semibold text-[var(--foreground)]">
           {goal.savedLabel}
         </p>
-        <p className="text-xs text-[var(--muted)]">Goal {goal.targetLabel}</p>
+        <p className="text-xs text-[var(--muted)]">Target {goal.targetLabel}</p>
       </div>
     </li>
   );

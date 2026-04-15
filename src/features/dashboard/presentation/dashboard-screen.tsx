@@ -19,6 +19,7 @@ export type DashboardScreenProps = {
   readonly locale?: DashboardLocale;
   readonly onAddWidget?: MouseEventHandler<HTMLButtonElement>;
   readonly onSelectDateRange?: MouseEventHandler<HTMLButtonElement>;
+  readonly onOpenDailyLimitSettings?: MouseEventHandler<HTMLButtonElement>;
 };
 
 export function DashboardScreen({
@@ -27,6 +28,7 @@ export function DashboardScreen({
   locale = "id",
   onAddWidget,
   onSelectDateRange,
+  onOpenDailyLimitSettings,
 }: DashboardScreenProps) {
   return (
     <div className="h-screen w-screen overflow-hidden bg-background text-foreground">
@@ -37,7 +39,7 @@ export function DashboardScreen({
             className="fixed left-4 top-4 hidden h-[calc(100vh-2rem)] lg:flex sm:left-6 sm:top-6 sm:h-[calc(100vh-3rem)]"
           />
 
-          <section className="dashboard-screen-content h-full min-w-0 space-y-6 overflow-y-auto p-4 transition-[margin-left] duration-200 sm:p-6 lg:ml-68">
+          <section className="dashboard-screen-content h-full min-w-0 space-y-6 overflow-y-auto p-4 transition-[margin-left] duration-200 sm:p-6 lg:ml-68 lg:peer-data-[collapsed=true]/sidebar:ml-27">
             <DashboardHeaderSection
               title={viewModel.heading.title}
               subtitle={viewModel.heading.subtitle}
@@ -77,6 +79,7 @@ export function DashboardScreen({
                 <DailyLimitSection
                   dailyLimit={viewModel.dailyLimit}
                   locale={locale}
+                  onOpenLimitSettingsAction={onOpenDailyLimitSettings}
                 />
               </aside>
             </section>

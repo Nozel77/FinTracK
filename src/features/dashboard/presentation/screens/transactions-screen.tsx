@@ -4,6 +4,7 @@ import type { ChangeEventHandler, MouseEventHandler } from "react";
 
 import { ActionPill } from "../components/action-pill";
 import { DashboardCard } from "../components/dashboard-card";
+import { PaginationControls } from "../components/pagination-controls";
 import {
   SidebarPageShell,
   type SidebarPageThemeOverrides,
@@ -22,6 +23,9 @@ type TransactionsScreenProps = {
   readonly onFilterChangeAction?: (filter: TransactionFilter) => void;
   readonly onSearchChangeAction?: ChangeEventHandler<HTMLInputElement>;
   readonly onResetFiltersAction?: MouseEventHandler<HTMLButtonElement>;
+  readonly transactionsPage?: number;
+  readonly transactionsPageSize?: number;
+  readonly onTransactionsPageChangeAction?: (nextPage: number) => void;
 };
 
 const FILTER_IDS: ReadonlyArray<TransactionFilter> = [
@@ -47,7 +51,7 @@ const transactionsTheme: SidebarPageThemeOverrides = {
 
 export function TransactionsScreen({
   viewModel,
-  locale = "en",
+  locale = "id",
   activeFilter = "all",
   searchQuery = "",
   onAddTransactionAction,
@@ -55,6 +59,9 @@ export function TransactionsScreen({
   onFilterChangeAction,
   onSearchChangeAction,
   onResetFiltersAction,
+  transactionsPage = 1,
+  transactionsPageSize = 10,
+  onTransactionsPageChangeAction,
 }: TransactionsScreenProps) {
   const filteredTransactions = viewModel.recentTransactions.filter(
     (transaction) => {
@@ -71,6 +78,18 @@ export function TransactionsScreen({
 
       return filterMatch && content.includes(search);
     },
+  );
+
+  const safePageSize = Math.max(1, Math.floor(transactionsPageSize));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredTransactions.length / safePageSize),
+  );
+  const currentPage = clamp(Math.floor(transactionsPage), 1, totalPages);
+  const pageStart = (currentPage - 1) * safePageSize;
+  const pagedTransactions = filteredTransactions.slice(
+    pageStart,
+    pageStart + safePageSize,
   );
 
   const copy = getTransactionsCopy(locale);
@@ -181,42 +200,52 @@ export function TransactionsScreen({
               {copy.noTransactionsMatch}
             </p>
           ) : (
-            <ul className="space-y-3">
-              {filteredTransactions.map((transaction) => (
-                <li
-                  key={transaction.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface-2 px-4 py-3"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">
-                      {transaction.title}
-                    </p>
-                    <p className="mt-1 truncate text-xs text-muted">
-                      {transaction.category} • {transaction.dateLabel}
-                    </p>
-                  </div>
+            <div className="space-y-4">
+              <ul className="space-y-3">
+                {pagedTransactions.map((transaction) => (
+                  <li
+                    key={transaction.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface-2 px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {transaction.title}
+                      </p>
+                      <p className="mt-1 truncate text-xs text-muted">
+                        {transaction.category} • {transaction.dateLabel}
+                      </p>
+                    </div>
 
-                  <div className="flex shrink-0 items-center gap-3">
-                    <span
-                      className={cn(
-                        "rounded-full border px-2.5 py-1 text-[11px] font-medium",
-                        toneBadgeClassName[transaction.tone],
-                      )}
-                    >
-                      {transactionToneToLabel(transaction.tone, locale)}
-                    </span>
-                    <span
-                      className={cn(
-                        "text-sm font-semibold",
-                        toneAmountClassName[transaction.tone],
-                      )}
-                    >
-                      {transaction.amountLabel}
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span
+                        className={cn(
+                          "rounded-full border px-2.5 py-1 text-[11px] font-medium",
+                          toneBadgeClassName[transaction.tone],
+                        )}
+                      >
+                        {transactionToneToLabel(transaction.tone, locale)}
+                      </span>
+                      <span
+                        className={cn(
+                          "text-sm font-semibold",
+                          toneAmountClassName[transaction.tone],
+                        )}
+                      >
+                        {transaction.amountLabel}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+
+              <PaginationControls
+                page={currentPage}
+                pageSize={safePageSize}
+                totalItems={filteredTransactions.length}
+                onPageChangeAction={onTransactionsPageChangeAction}
+                locale={locale}
+              />
+            </div>
           )}
         </DashboardCard>
       </div>
@@ -344,4 +373,8 @@ function getTransactionsCopy(locale: "en" | "id") {
 
 function cn(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(" ");
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }

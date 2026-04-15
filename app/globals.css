@@ -78,6 +78,41 @@
     box-sizing: border-box;
 }
 
+button,
+a,
+[role="button"],
+summary,
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+label[for] {
+    cursor: pointer;
+    transition:
+        transform 120ms ease,
+        filter 120ms ease,
+        box-shadow 120ms ease;
+}
+
+button:active,
+a:active,
+[role="button"]:active,
+summary:active,
+input[type="button"]:active,
+input[type="submit"]:active,
+input[type="reset"]:active,
+label[for]:active {
+    transform: translateY(1px) scale(0.98);
+    filter: brightness(0.96);
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled,
+[aria-disabled="true"] {
+    cursor: not-allowed;
+}
+
 html,
 body {
     min-height: 100%;

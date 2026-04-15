@@ -11,6 +11,10 @@ export type DashboardSidebarItemId =
   | "transactions"
   | "goals"
   | "analytics"
+  | "smart-budgeting"
+  | "recurring-bills"
+  | "financial-health"
+  | "debt-manager"
   | "settings";
 
 export type DashboardSidebarItem = {
@@ -28,6 +32,8 @@ type DashboardSidebarProps = {
   readonly activeItemId?: DashboardSidebarItemId;
   readonly className?: string;
   readonly defaultCollapsed?: boolean;
+  readonly collapsed?: boolean;
+  readonly onCollapsedChangeAction?: (collapsed: boolean) => void;
   readonly onLogoutAction?: () => void;
   readonly themeMode?: SidebarThemeMode;
   readonly onThemeToggleAction?: () => void;
@@ -35,8 +41,26 @@ type DashboardSidebarProps = {
 
 const defaultItems: ReadonlyArray<DashboardSidebarItem> = [
   { id: "dashboard", label: "Dashboard", icon: <GridIcon /> },
+  { id: "wallet", label: "Wallet", icon: <WalletIcon /> },
   { id: "transactions", label: "Transactions", icon: <SwapIcon /> },
   { id: "goals", label: "Goals", icon: <TargetIcon /> },
+  { id: "analytics", label: "Analytics", icon: <AnalyticsIcon /> },
+  {
+    id: "smart-budgeting",
+    label: "Smart Budgeting",
+    icon: <BudgetingIcon />,
+  },
+  {
+    id: "recurring-bills",
+    label: "Recurring & Bills",
+    icon: <BillsIcon />,
+  },
+  {
+    id: "financial-health",
+    label: "Financial Health",
+    icon: <HealthIcon />,
+  },
+  { id: "debt-manager", label: "Debt Manager", icon: <DebtIcon /> },
 ];
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "dashboard.sidebar.collapsed";
@@ -57,6 +81,10 @@ const SIDEBAR_COPY = {
     transactions: "Transactions",
     goals: "Goals",
     analytics: "Analytics",
+    "smart-budgeting": "Smart Budgeting",
+    "recurring-bills": "Recurring & Bills",
+    "financial-health": "Financial Health",
+    "debt-manager": "Debt Manager",
     settings: "Settings",
   },
   id: {
@@ -73,6 +101,10 @@ const SIDEBAR_COPY = {
     transactions: "Transaksi",
     goals: "Tujuan",
     analytics: "Analitik",
+    "smart-budgeting": "Anggaran Dinamis",
+    "recurring-bills": "Tagihan Rutin",
+    "financial-health": "Kesehatan Finansial",
+    "debt-manager": "Hutang & Piutang",
     settings: "Pengaturan",
   },
 } as const;
@@ -85,27 +117,40 @@ export function DashboardSidebar({
   activeItemId = "dashboard",
   className,
   defaultCollapsed = false,
+  collapsed,
+  onCollapsedChangeAction,
   onLogoutAction,
   themeMode,
   onThemeToggleAction,
 }: DashboardSidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
+  const [internalCollapsed, setInternalCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return defaultCollapsed;
+
+    try {
+      const stored = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+      if (stored === "true") return true;
+      if (stored === "false") return false;
+    } catch {
+      // Ignore localStorage read failures and keep default state.
+    }
+
+    return defaultCollapsed;
+  });
+
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [localThemeMode, setLocalThemeMode] =
     useState<SidebarThemeMode>("light");
   const [hasLoadedPreference, setHasLoadedPreference] = useState(false);
-  const [locale, setLocale] = useState<SidebarLocale>("en");
+  const [locale] = useState<SidebarLocale>("id");
 
   const copy = useMemo(() => SIDEBAR_COPY[locale], [locale]);
   const isThemeControlled = themeMode !== undefined;
+  const isCollapsedControlled = collapsed !== undefined;
+  const isCollapsed = collapsed ?? internalCollapsed;
   const isDarkMode = (themeMode ?? localThemeMode) === "dark";
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
-      if (stored === "true") setIsCollapsed(true);
-      if (stored === "false") setIsCollapsed(false);
-
       if (!isThemeControlled) {
         const storedTheme = window.localStorage.getItem(
           SIDEBAR_THEME_STORAGE_KEY,
@@ -117,9 +162,7 @@ export function DashboardSidebar({
         }
       }
 
-      const language = window.navigator.language.toLowerCase();
-      if (language.startsWith("id")) setLocale("id");
-      else setLocale("en");
+      // Sidebar dipaksa menggunakan Bahasa Indonesia.
     } finally {
       setHasLoadedPreference(true);
     }
@@ -140,6 +183,16 @@ export function DashboardSidebar({
     window.localStorage.setItem(SIDEBAR_THEME_STORAGE_KEY, localThemeMode);
     document.documentElement.dataset.theme = localThemeMode;
   }, [hasLoadedPreference, isThemeControlled, localThemeMode]);
+
+  function handleToggleCollapsed() {
+    const next = !isCollapsed;
+
+    if (!isCollapsedControlled) {
+      setInternalCollapsed(next);
+    }
+
+    onCollapsedChangeAction?.(next);
+  }
 
   async function handleLogout() {
     if (isLoggingOut) return;
@@ -193,7 +246,7 @@ export function DashboardSidebar({
 
         <button
           type="button"
-          onClick={() => setIsCollapsed((prev) => !prev)}
+          onClick={handleToggleCollapsed}
           className="grid size-11 place-items-center rounded-xl text-muted transition-colors hover:bg-primary-soft hover:text-primary"
           aria-label={isCollapsed ? copy.expandSidebar : copy.collapseSidebar}
           title={isCollapsed ? copy.expandSidebar : copy.collapseSidebar}
@@ -477,6 +530,183 @@ function TargetIcon() {
         strokeWidth="1.5"
       />
       <circle cx="10" cy="10" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function WalletIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="size-5" fill="none" aria-hidden>
+      <rect
+        x="2.75"
+        y="5"
+        width="14.5"
+        height="10"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M12.5 9H17.25V11H12.5C11.95 11 11.5 10.55 11.5 10C11.5 9.45 11.95 9 12.5 9Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <circle cx="13.75" cy="10" r="0.75" fill="currentColor" />
+    </svg>
+  );
+}
+
+function AnalyticsIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="size-5" fill="none" aria-hidden>
+      <path
+        d="M3.75 15.75H16.25"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <rect
+        x="5"
+        y="10"
+        width="2.5"
+        height="4.5"
+        rx="0.75"
+        fill="currentColor"
+      />
+      <rect
+        x="8.75"
+        y="7.5"
+        width="2.5"
+        height="7"
+        rx="0.75"
+        fill="currentColor"
+      />
+      <rect
+        x="12.5"
+        y="5.25"
+        width="2.5"
+        height="9.25"
+        rx="0.75"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function BudgetingIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="size-5" fill="none" aria-hidden>
+      <path
+        d="M10 3.25V6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <circle
+        cx="10"
+        cy="11"
+        r="5.75"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M10 11L13 9.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function BillsIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="size-5" fill="none" aria-hidden>
+      <rect
+        x="3.25"
+        y="3.75"
+        width="13.5"
+        height="12.5"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M6.5 2.75V5M13.5 2.75V5M3.25 7.5H16.75"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M7.5 11L9.25 12.75L12.75 9.25"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function HealthIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="size-5" fill="none" aria-hidden>
+      <path
+        d="M3 10H6L8 6L10.5 14L12.5 10H17"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <rect
+        x="2.75"
+        y="3.25"
+        width="14.5"
+        height="13.5"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        opacity="0.4"
+      />
+    </svg>
+  );
+}
+
+function DebtIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="size-5" fill="none" aria-hidden>
+      <path
+        d="M10 4V16"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M6 7H11.25C12.35 7 13.25 7.9 13.25 9C13.25 10.1 12.35 11 11.25 11H8.75C7.65 11 6.75 11.9 6.75 13C6.75 14.1 7.65 15 8.75 15H14"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="size-5" fill="none" aria-hidden>
+      <circle
+        cx="10"
+        cy="10"
+        r="2.25"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M10 3.5V5M10 15V16.5M15 10H16.5M3.5 10H5M14.6 5.4L13.5 6.5M6.5 13.5L5.4 14.6M14.6 14.6L13.5 13.5M6.5 6.5L5.4 5.4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

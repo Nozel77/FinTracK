@@ -9,6 +9,10 @@ export type ScreenId =
   | "transactions"
   | "goals"
   | "analytics"
+  | "smart-budgeting"
+  | "recurring-bills"
+  | "financial-health"
+  | "debt-manager"
   | "settings";
 
 export type SettingsProfile = {
@@ -23,6 +27,7 @@ export type SettingsPreferences = {
   timezone: string;
   language: string;
   startOfWeek: "Monday" | "Sunday";
+  dailyTransactionLimit?: number | string;
 };
 
 export type SettingsToggleId =
@@ -45,11 +50,28 @@ export type ActionDialogId =
   | "add-funds"
   | "add-transaction"
   | "create-goal"
-  | "adjust-plan";
+  | "adjust-plan"
+  | "set-over-speed-alert"
+  | "configure-rollover-budget"
+  | "add-subscription"
+  | "add-bill"
+  | "add-debt"
+  | "add-receivable"
+  | "run-debt-strategy";
 
 export type DateRange = {
   from?: string;
   to?: string;
+};
+
+export type QuickRangePreset = "today" | "week" | "monthly" | "custom";
+
+export type DashboardPagination = {
+  recentTransactionsPage: number;
+  goalsPage: number;
+  spendingBreakdownPage: number;
+  transactionsPage: number;
+  pageSize: number;
 };
 
 export type DashboardUiStoreInit = {
@@ -69,8 +91,9 @@ export const DEFAULT_PROFILE: SettingsProfile = {
 export const DEFAULT_PREFERENCES: SettingsPreferences = {
   currency: "IDR",
   timezone: "UTC+07:00 (Jakarta)",
-  language: "English (US)",
+  language: "Bahasa Indonesia",
   startOfWeek: "Monday",
+  dailyTransactionLimit: 10_000_000,
 };
 
 export const DEFAULT_TOGGLES: SettingsToggles = [
@@ -104,6 +127,8 @@ export type DashboardUiState = {
   screen: ScreenId;
   viewModel: DashboardViewModel;
   range: DateRange;
+  quickRangePreset: QuickRangePreset;
+  pagination: DashboardPagination;
   busy: boolean;
   message: string;
   transactionFilter: TransactionFilter;
@@ -121,6 +146,13 @@ export type DashboardUiActions = {
   setViewModel: (viewModel: DashboardViewModel) => void;
   setRange: (range: DateRange) => void;
   patchRange: (patch: Partial<DateRange>) => void;
+  setQuickRangePreset: (preset: QuickRangePreset) => void;
+  setPaginationPage: (
+    key: Exclude<keyof DashboardPagination, "pageSize">,
+    page: number,
+  ) => void;
+  setPaginationPageSize: (pageSize: number) => void;
+  resetPagination: () => void;
   setBusy: (busy: boolean) => void;
   setMessage: (message: string) => void;
   clearMessage: () => void;
@@ -162,6 +194,14 @@ export function createDashboardUiStore({
       from: initialFrom,
       to: initialTo,
     },
+    quickRangePreset: "today",
+    pagination: {
+      recentTransactionsPage: 1,
+      goalsPage: 1,
+      spendingBreakdownPage: 1,
+      transactionsPage: 1,
+      pageSize: 5,
+    },
     busy: false,
     message: "",
     transactionFilter: "all",
@@ -175,12 +215,42 @@ export function createDashboardUiStore({
 
     setScreen: (screen) => set({ screen }),
     setViewModel: (viewModel) => set({ viewModel }),
-    setRange: (range) => set({ range }),
+    setRange: (range) =>
+      set({
+        range,
+        quickRangePreset: "custom",
+      }),
     patchRange: (patch) =>
       set((state) => ({
         range: {
           ...state.range,
           ...patch,
+        },
+        quickRangePreset: "custom",
+      })),
+    setQuickRangePreset: (quickRangePreset) => set({ quickRangePreset }),
+    setPaginationPage: (key, page) =>
+      set((state) => ({
+        pagination: {
+          ...state.pagination,
+          [key]: Math.max(1, Math.floor(page)),
+        },
+      })),
+    setPaginationPageSize: (pageSize) =>
+      set((state) => ({
+        pagination: {
+          ...state.pagination,
+          pageSize: Math.max(1, Math.floor(pageSize)),
+        },
+      })),
+    resetPagination: () =>
+      set((state) => ({
+        pagination: {
+          ...state.pagination,
+          recentTransactionsPage: 1,
+          goalsPage: 1,
+          spendingBreakdownPage: 1,
+          transactionsPage: 1,
         },
       })),
     setBusy: (busy) => set({ busy }),
@@ -246,6 +316,8 @@ export const dashboardUiSelectors = {
   screen: (state: DashboardUiStore) => state.screen,
   viewModel: (state: DashboardUiStore) => state.viewModel,
   range: (state: DashboardUiStore) => state.range,
+  quickRangePreset: (state: DashboardUiStore) => state.quickRangePreset,
+  pagination: (state: DashboardUiStore) => state.pagination,
   busy: (state: DashboardUiStore) => state.busy,
   message: (state: DashboardUiStore) => state.message,
   transactionFilter: (state: DashboardUiStore) => state.transactionFilter,
