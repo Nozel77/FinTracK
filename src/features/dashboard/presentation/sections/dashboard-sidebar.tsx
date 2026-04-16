@@ -123,19 +123,8 @@ export function DashboardSidebar({
   themeMode,
   onThemeToggleAction,
 }: DashboardSidebarProps) {
-  const [internalCollapsed, setInternalCollapsed] = useState<boolean>(() => {
-    if (typeof window === "undefined") return defaultCollapsed;
-
-    try {
-      const stored = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
-      if (stored === "true") return true;
-      if (stored === "false") return false;
-    } catch {
-      // Ignore localStorage read failures and keep default state.
-    }
-
-    return defaultCollapsed;
-  });
+  const [internalCollapsed, setInternalCollapsed] =
+    useState<boolean>(defaultCollapsed);
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [localThemeMode, setLocalThemeMode] =
@@ -162,11 +151,22 @@ export function DashboardSidebar({
         }
       }
 
+      if (!isCollapsedControlled) {
+        const storedCollapsed = window.localStorage.getItem(
+          SIDEBAR_COLLAPSED_STORAGE_KEY,
+        );
+        if (storedCollapsed === "true") {
+          setInternalCollapsed(true);
+        } else if (storedCollapsed === "false") {
+          setInternalCollapsed(false);
+        }
+      }
+
       // Sidebar dipaksa menggunakan Bahasa Indonesia.
     } finally {
       setHasLoadedPreference(true);
     }
-  }, [isThemeControlled]);
+  }, [isCollapsedControlled, isThemeControlled]);
 
   useEffect(() => {
     if (!hasLoadedPreference) return;
@@ -683,26 +683,6 @@ function DebtIcon() {
       />
       <path
         d="M6 7H11.25C12.35 7 13.25 7.9 13.25 9C13.25 10.1 12.35 11 11.25 11H8.75C7.65 11 6.75 11.9 6.75 13C6.75 14.1 7.65 15 8.75 15H14"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function SettingsIcon() {
-  return (
-    <svg viewBox="0 0 20 20" className="size-5" fill="none" aria-hidden>
-      <circle
-        cx="10"
-        cy="10"
-        r="2.25"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <path
-        d="M10 3.5V5M10 15V16.5M15 10H16.5M3.5 10H5M14.6 5.4L13.5 6.5M6.5 13.5L5.4 14.6M14.6 14.6L13.5 13.5M6.5 6.5L5.4 5.4"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"

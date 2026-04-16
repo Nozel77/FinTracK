@@ -76,15 +76,9 @@ export function SidebarPageShell({
   sidebarClassName,
 }: SidebarPageShellProps) {
   const [themeMode, setThemeMode] = useState<SidebarThemeMode>("light");
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-
-    const storedCollapsed = window.localStorage.getItem(
-      SIDEBAR_COLLAPSED_STORAGE_KEY,
-    );
-    return storedCollapsed === "true";
-  });
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const hasHydratedThemeRef = useRef(false);
+  const hasHydratedSidebarRef = useRef(false);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(THEME_MODE_STORAGE_KEY);
@@ -115,6 +109,26 @@ export function SidebarPageShell({
   }, [themeMode]);
 
   useEffect(() => {
+    const storedCollapsed = window.localStorage.getItem(
+      SIDEBAR_COLLAPSED_STORAGE_KEY,
+    );
+
+    hasHydratedSidebarRef.current = true;
+
+    if (storedCollapsed !== "true") return;
+
+    const timerId = window.setTimeout(() => {
+      setIsSidebarCollapsed(true);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydratedSidebarRef.current) return;
+
     window.localStorage.setItem(
       SIDEBAR_COLLAPSED_STORAGE_KEY,
       isSidebarCollapsed ? "true" : "false",
