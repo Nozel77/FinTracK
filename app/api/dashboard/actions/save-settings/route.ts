@@ -30,6 +30,8 @@ type SaveSettingsRequestBody = {
     readonly language?: string;
     readonly startOfWeek?: StartOfWeek;
     readonly dailyTransactionLimit?: number;
+    readonly monthlyDebtInstallment?: number;
+    readonly emergencyFundBalance?: number;
   };
   readonly toggles?: {
     readonly emailAlerts?: boolean;
@@ -177,6 +179,14 @@ function parsePreferences(
     preferences.dailyTransactionLimit,
     "preferences.dailyTransactionLimit",
   );
+  const monthlyDebtInstallment = getOptionalNonNegativeNumber(
+    preferences.monthlyDebtInstallment,
+    "preferences.monthlyDebtInstallment",
+  );
+  const emergencyFundBalance = getOptionalNonNegativeNumber(
+    preferences.emergencyFundBalance,
+    "preferences.emergencyFundBalance",
+  );
 
   const startOfWeekRaw = preferences.startOfWeek;
   let startOfWeek: StartOfWeek | undefined;
@@ -194,7 +204,9 @@ function parsePreferences(
     !timezone &&
     !language &&
     !startOfWeek &&
-    dailyTransactionLimit === undefined
+    dailyTransactionLimit === undefined &&
+    monthlyDebtInstallment === undefined &&
+    emergencyFundBalance === undefined
   ) {
     return undefined;
   }
@@ -205,6 +217,8 @@ function parsePreferences(
     language,
     startOfWeek,
     dailyTransactionLimit,
+    monthlyDebtInstallment,
+    emergencyFundBalance,
   };
 }
 
@@ -289,6 +303,26 @@ function getOptionalPositiveNumber(
 
   if (!Number.isFinite(numeric) || numeric <= 0) {
     throw new Error(`"${fieldName}" must be a positive number.`);
+  }
+
+  return numeric;
+}
+
+function getOptionalNonNegativeNumber(
+  value: unknown,
+  fieldName: string,
+): number | undefined {
+  if (value === undefined || value === null) return undefined;
+
+  const numeric =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number(value)
+        : Number.NaN;
+
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    throw new Error(`"${fieldName}" must be a non-negative number.`);
   }
 
   return numeric;

@@ -3,7 +3,6 @@
 import {
   useEffect,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -36,6 +35,8 @@ export type SidebarPageShellProps = {
   readonly badgeLabel?: string;
   readonly headerActions?: ReactNode;
   readonly children: ReactNode;
+  readonly isSectionLoading?: boolean;
+  readonly loadingLabel?: string;
   readonly themeOverrides?: SidebarPageThemeOverrides;
   readonly className?: string;
   readonly contentClassName?: string;
@@ -46,7 +47,6 @@ type CSSVariables = CSSProperties & Partial<Record<`--${string}`, string>>;
 type SidebarThemeMode = "light" | "dark";
 
 const THEME_MODE_STORAGE_KEY = "dashboard.theme";
-const SIDEBAR_COLLAPSED_STORAGE_KEY = "dashboard.sidebar.collapsed";
 
 const DARK_THEME_VARS: CSSVariables = {
   "--background": "#0b1220",
@@ -70,76 +70,41 @@ export function SidebarPageShell({
   badgeLabel,
   headerActions,
   children,
+  isSectionLoading = false,
+  loadingLabel = "Memuat konten...",
   themeOverrides,
   className,
   contentClassName,
   sidebarClassName,
 }: SidebarPageShellProps) {
-  const [themeMode, setThemeMode] = useState<SidebarThemeMode>("light");
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
-  const hasHydratedThemeRef = useRef(false);
-  const hasHydratedSidebarRef = useRef(false);
+  const [themeMode, setThemeMode] = useState<SidebarThemeMode>(() =>
+    getInitialThemeMode(),
+  );
+  const [isSidebarAnimationReady, setIsSidebarAnimationReady] = useState(false);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(THEME_MODE_STORAGE_KEY);
-
-    const nextThemeMode: SidebarThemeMode =
-      stored === "light" || stored === "dark"
-        ? stored
-        : window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light";
-
-    hasHydratedThemeRef.current = true;
-    window.localStorage.setItem(THEME_MODE_STORAGE_KEY, nextThemeMode);
-    document.documentElement.dataset.theme = nextThemeMode;
-
-    if (nextThemeMode !== "light") {
-      queueMicrotask(() => {
-        setThemeMode(nextThemeMode);
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!hasHydratedThemeRef.current) return;
-
     window.localStorage.setItem(THEME_MODE_STORAGE_KEY, themeMode);
     document.documentElement.dataset.theme = themeMode;
   }, [themeMode]);
 
   useEffect(() => {
-    const storedCollapsed = window.localStorage.getItem(
-      SIDEBAR_COLLAPSED_STORAGE_KEY,
-    );
-
-    hasHydratedSidebarRef.current = true;
-
-    if (storedCollapsed !== "true") return;
-
-    const timerId = window.setTimeout(() => {
-      setIsSidebarCollapsed(true);
-    }, 0);
+    const frame = window.requestAnimationFrame(() => {
+      setIsSidebarAnimationReady(true);
+    });
 
     return () => {
-      window.clearTimeout(timerId);
+      window.cancelAnimationFrame(frame);
     };
   }, []);
-
-  useEffect(() => {
-    if (!hasHydratedSidebarRef.current) return;
-
-    window.localStorage.setItem(
-      SIDEBAR_COLLAPSED_STORAGE_KEY,
-      isSidebarCollapsed ? "true" : "false",
-    );
-  }, [isSidebarCollapsed]);
 
   const handleThemeToggleAction = () => {
     setThemeMode((previous) => (previous === "dark" ? "light" : "dark"));
   };
 
-  const themedStyle = useMemo(() => toThemeVariables(themeMode), [themeMode]);
+  const themedStyle = useMemo(
+    () => toThemeVariables(themeMode, themeOverrides),
+    [themeMode, themeOverrides],
+  );
 
   return (
     <div
@@ -158,16 +123,16 @@ export function SidebarPageShell({
               "hidden lg:fixed lg:left-6 lg:top-6 lg:flex lg:h-[calc(100vh-3rem)]",
               sidebarClassName,
             )}
-            collapsed={isSidebarCollapsed}
-            onCollapsedChangeAction={setIsSidebarCollapsed}
             themeMode={themeMode}
             onThemeToggleAction={handleThemeToggleAction}
           />
 
           <section
             className={cx(
-              "sidebar-shell-content min-w-0 space-y-6 p-4 sm:p-6 lg:transition-[margin-left] lg:duration-200",
-              isSidebarCollapsed ? "lg:ml-27" : "lg:ml-68",
+              "sidebar-shell-content min-w-0 space-y-6 p-4 sm:p-6 lg:ml-68 lg:peer-data-[collapsed=true]/sidebar:ml-27",
+              isSidebarAnimationReady
+                ? "lg:transition-[margin-left] lg:duration-200"
+                : "lg:transition-none",
               contentClassName,
             )}
           >
@@ -198,7 +163,23 @@ export function SidebarPageShell({
               ) : null}
             </header>
 
-            <section className="min-w-0">{children}</section>
+            <section className="relative min-w-0" aria-busy={isSectionLoading}>
+              {children}
+
+              {isSectionLoading ? (
+                <div className="pointer-events-none absolute inset-0 z-10 rounded-2xl bg-background/70 backdrop-blur-[1px]">
+                  <div className="flex h-full w-full flex-col justify-start gap-4 p-4 sm:p-6">
+                    <div className="h-6 w-48 animate-pulse rounded-lg bg-primary-soft" />
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="h-28 animate-pulse rounded-xl bg-surface-2" />
+                      <div className="h-28 animate-pulse rounded-xl bg-surface-2" />
+                    </div>
+                    <div className="h-40 animate-pulse rounded-xl bg-surface-2" />
+                    <span className="sr-only">{loadingLabel}</span>
+                  </div>
+                </div>
+              ) : null}
+            </section>
           </section>
         </div>
       </main>
@@ -206,14 +187,65 @@ export function SidebarPageShell({
   );
 }
 
+function getInitialThemeMode(): SidebarThemeMode {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  const rootThemeMode = document.documentElement.dataset.theme;
+  if (rootThemeMode === "light" || rootThemeMode === "dark") {
+    return rootThemeMode;
+  }
+
+  const storedThemeMode = window.localStorage.getItem(THEME_MODE_STORAGE_KEY);
+  if (storedThemeMode === "light" || storedThemeMode === "dark") {
+    return storedThemeMode;
+  }
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
 function toThemeVariables(
   themeMode: SidebarThemeMode = "light",
+  themeOverrides?: SidebarPageThemeOverrides,
 ): CSSVariables | undefined {
   if (themeMode === "dark") {
     return DARK_THEME_VARS;
   }
 
-  return undefined;
+  return toOverrideThemeVariables(themeOverrides);
+}
+
+function toOverrideThemeVariables(
+  themeOverrides?: SidebarPageThemeOverrides,
+): CSSVariables | undefined {
+  if (!themeOverrides) {
+    return undefined;
+  }
+
+  const variables: CSSVariables = {};
+
+  if (themeOverrides.background)
+    variables["--background"] = themeOverrides.background;
+  if (themeOverrides.foreground)
+    variables["--foreground"] = themeOverrides.foreground;
+  if (themeOverrides.surface) variables["--surface"] = themeOverrides.surface;
+  if (themeOverrides.surface2)
+    variables["--surface-2"] = themeOverrides.surface2;
+  if (themeOverrides.border) variables["--border"] = themeOverrides.border;
+  if (themeOverrides.muted) variables["--muted"] = themeOverrides.muted;
+  if (themeOverrides.primary) variables["--primary"] = themeOverrides.primary;
+  if (themeOverrides.primaryHover)
+    variables["--primary-hover"] = themeOverrides.primaryHover;
+  if (themeOverrides.primarySoft)
+    variables["--primary-soft"] = themeOverrides.primarySoft;
+  if (themeOverrides.accent) variables["--accent"] = themeOverrides.accent;
+  if (themeOverrides.success) variables["--success"] = themeOverrides.success;
+  if (themeOverrides.danger) variables["--danger"] = themeOverrides.danger;
+
+  return Object.keys(variables).length > 0 ? variables : undefined;
 }
 
 function cx(...classNames: Array<string | false | null | undefined>): string {

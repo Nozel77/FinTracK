@@ -18,12 +18,12 @@ export function TransactionItem({ transaction }: TransactionItemProps) {
   )}`;
 
   return (
-    <li className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+    <li className="flex items-center justify-between rounded-2xl border border-border bg-surface-2 px-4 py-3">
       <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+        <p className="truncate text-sm font-semibold text-foreground">
           {transaction.title}
         </p>
-        <p className="mt-1 text-xs text-[var(--muted)]">
+        <p className="mt-1 text-xs text-muted">
           {transaction.category} • {formatDate(transaction.occurredAt)}
         </p>
       </div>

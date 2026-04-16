@@ -85,6 +85,8 @@ type UserSettingsRow = {
   monthly_report: boolean;
   compact_mode: boolean;
   daily_transaction_limit: number | null;
+  monthly_debt_installment: number | null;
+  emergency_fund_balance: number | null;
 };
 
 type DashboardClientScreenProps = {
@@ -202,6 +204,31 @@ export function DashboardClientScreen({
   const locale = "id" as const;
   const [showSlowSkeleton, setShowSlowSkeleton] = useState(false);
   const [dailyLimitDialogOpen, setDailyLimitDialogOpen] = useState(false);
+  const [apiLoadingCount, setApiLoadingCount] = useState(0);
+  const [openDebtMenuId, setOpenDebtMenuId] = useState<string | null>(null);
+
+  const beginApiLoading = useCallback(() => {
+    setApiLoadingCount((current) => current + 1);
+  }, []);
+
+  const endApiLoading = useCallback(() => {
+    setApiLoadingCount((current) => Math.max(0, current - 1));
+  }, []);
+
+  const withApiLoading = useCallback(
+    async <TResult,>(operation: () => TResult): Promise<Awaited<TResult>> => {
+      beginApiLoading();
+
+      try {
+        return await operation();
+      } finally {
+        endApiLoading();
+      }
+    },
+    [beginApiLoading, endApiLoading],
+  );
+
+  const isApiLoading = apiLoadingCount > 0;
 
   const copy = useMemo(
     () =>
@@ -329,7 +356,9 @@ export function DashboardClientScreen({
   );
 
   useEffect(() => {
-    if (!busy) {
+    const loadingActive = busy || isApiLoading;
+
+    if (!loadingActive) {
       setShowSlowSkeleton(false);
       return;
     }
@@ -341,7 +370,7 @@ export function DashboardClientScreen({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [busy]);
+  }, [busy, isApiLoading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -351,13 +380,15 @@ export function DashboardClientScreen({
 
       try {
         const supabase = getSupabaseBrowserClient();
-        const { data, error } = await supabase
-          .from("user_settings")
-          .select(
-            "full_name,email,phone,role,currency,timezone,language,start_of_week,email_alerts,push_notifications,monthly_report,compact_mode,daily_transaction_limit",
-          )
-          .eq("user_id", userId)
-          .maybeSingle<UserSettingsRow>();
+        const { data, error } = await withApiLoading(() =>
+          supabase
+            .from("user_settings")
+            .select(
+              "full_name,email,phone,role,currency,timezone,language,start_of_week,email_alerts,push_notifications,monthly_report,compact_mode,daily_transaction_limit,monthly_debt_installment,emergency_fund_balance",
+            )
+            .eq("user_id", userId)
+            .maybeSingle<UserSettingsRow>(),
+        );
 
         if (error || !data || cancelled) return;
 
@@ -376,6 +407,18 @@ export function DashboardClientScreen({
           dailyTransactionLimit:
             toPositiveNumberFromUnknown(data.daily_transaction_limit) ??
             DEFAULT_PREFERENCES.dailyTransactionLimit,
+          monthlyDebtInstallment:
+            typeof data.monthly_debt_installment === "number" &&
+            Number.isFinite(data.monthly_debt_installment) &&
+            data.monthly_debt_installment >= 0
+              ? data.monthly_debt_installment
+              : DEFAULT_PREFERENCES.monthlyDebtInstallment,
+          emergencyFundBalance:
+            typeof data.emergency_fund_balance === "number" &&
+            Number.isFinite(data.emergency_fund_balance) &&
+            data.emergency_fund_balance >= 0
+              ? data.emergency_fund_balance
+              : DEFAULT_PREFERENCES.emergencyFundBalance,
         });
 
         setToggles(
@@ -405,7 +448,7 @@ export function DashboardClientScreen({
     return () => {
       cancelled = true;
     };
-  }, [setPreferences, setProfile, setToggles, userId]);
+  }, [setPreferences, setProfile, setToggles, userId, withApiLoading]);
 
   const buildQuery = useCallback(
     (overrideRange?: { from?: string; to?: string }) => {
@@ -425,12 +468,14 @@ export function DashboardClientScreen({
     async (overrideRange?: { from?: string; to?: string }) => {
       const query = buildQuery(overrideRange);
       const path = `/api/dashboard/snapshot${query ? `?${query}` : ""}`;
-      const payload = await callJsonApi<SnapshotApiData>(path);
+      const payload = await withApiLoading(() =>
+        callJsonApi<SnapshotApiData>(path),
+      );
 
       setViewModel(payload.viewModel);
       setRange(payload.range);
     },
-    [buildQuery, setRange, setViewModel],
+    [buildQuery, setRange, setViewModel, withApiLoading],
   );
 
   const runAction = useCallback(
@@ -446,16 +491,18 @@ export function DashboardClientScreen({
       setMessage("");
 
       try {
-        const result = await callJsonApi<{ message?: string }>(endpoint, {
-          method: "POST",
-          body: JSON.stringify({
-            ...body,
-            ...(userId ? { userId } : {}),
+        const result = await withApiLoading(() =>
+          callJsonApi<{ message?: string }>(endpoint, {
+            method: "POST",
+            body: JSON.stringify({
+              ...body,
+              ...(userId ? { userId } : {}),
+            }),
+            headers: {
+              "content-type": "application/json",
+            },
           }),
-          headers: {
-            "content-type": "application/json",
-          },
-        });
+        );
 
         const shouldRefreshSnapshot = options?.refreshSnapshotOnSuccess ?? true;
         if (shouldRefreshSnapshot) {
@@ -480,6 +527,7 @@ export function DashboardClientScreen({
       setBusy,
       setMessage,
       userId,
+      withApiLoading,
     ],
   );
 
@@ -501,9 +549,31 @@ export function DashboardClientScreen({
         return;
       }
 
+      const monthlyDebtInstallment = toNonNegativeNumberFromUnknown(
+        preferences.monthlyDebtInstallment,
+      );
+      if (monthlyDebtInstallment === null) {
+        setDialogError(
+          "Nominal cicilan bulanan harus berupa angka nol atau positif.",
+        );
+        return;
+      }
+
+      const emergencyFundBalance = toNonNegativeNumberFromUnknown(
+        preferences.emergencyFundBalance,
+      );
+      if (emergencyFundBalance === null) {
+        setDialogError(
+          "Saldo dana darurat harus berupa angka nol atau positif.",
+        );
+        return;
+      }
+
       const nextPreferences: SettingsPreferences = {
         ...preferences,
         dailyTransactionLimit: dailyLimit,
+        monthlyDebtInstallment,
+        emergencyFundBalance,
       };
 
       setDialogError("");
@@ -638,12 +708,11 @@ export function DashboardClientScreen({
       const query = new URLSearchParams(buildQuery());
       query.set("format", "pdf");
 
-      const response = await fetch(
-        `/api/dashboard/export?${query.toString()}`,
-        {
+      const response = await withApiLoading(() =>
+        fetch(`/api/dashboard/export?${query.toString()}`, {
           method: "GET",
           cache: "no-store",
-        },
+        }),
       );
 
       if (!response.ok) {
@@ -668,7 +737,14 @@ export function DashboardClientScreen({
     } finally {
       setBusy(false);
     }
-  }, [buildQuery, copy.exportFailed, copy.reportExported, setBusy, setMessage]);
+  }, [
+    buildQuery,
+    copy.exportFailed,
+    copy.reportExported,
+    setBusy,
+    setMessage,
+    withApiLoading,
+  ]);
 
   const onProfileChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -875,6 +951,26 @@ export function DashboardClientScreen({
       return;
     }
 
+    const monthlyDebtInstallment = toNonNegativeNumberFromUnknown(
+      preferences.monthlyDebtInstallment,
+    );
+
+    if (monthlyDebtInstallment === null) {
+      setMessage(
+        "Nominal cicilan bulanan harus berupa angka nol atau positif.",
+      );
+      return;
+    }
+
+    const emergencyFundBalance = toNonNegativeNumberFromUnknown(
+      preferences.emergencyFundBalance,
+    );
+
+    if (emergencyFundBalance === null) {
+      setMessage("Saldo dana darurat harus berupa angka nol atau positif.");
+      return;
+    }
+
     void runAction(
       "/api/dashboard/actions/save-settings",
       {
@@ -882,6 +978,8 @@ export function DashboardClientScreen({
         preferences: {
           ...preferences,
           dailyTransactionLimit,
+          monthlyDebtInstallment,
+          emergencyFundBalance,
         },
         toggles: {
           emailAlerts:
@@ -1082,12 +1180,17 @@ export function DashboardClientScreen({
         return;
       }
 
+      const status = normalizePaymentStatus(values.status ?? "");
+      if (!status) {
+        setDialogError('Status hutang harus dipilih: "paid" atau "unpaid".');
+        return;
+      }
+
       setDialogError("");
-      await runAction("/api/dashboard/actions/add-transaction", {
-        title: `Cicilan: ${creditor}`,
-        category: "Hutang",
-        direction: "expense",
+      await runAction("/api/dashboard/actions/add-payable", {
+        creditor,
         amount,
+        status,
         occurredAt: new Date().toISOString(),
       });
       closeDialog();
@@ -1109,22 +1212,39 @@ export function DashboardClientScreen({
         return;
       }
 
+      const status = normalizePaymentStatus(values.status ?? "");
+      if (!status) {
+        setDialogError('Status piutang harus dipilih: "paid" atau "unpaid".');
+        return;
+      }
+
       const expectedDate = toIsoDate(values.expectedDate ?? "");
       const occurredAt = expectedDate
         ? new Date(`${expectedDate}T08:00:00.000Z`).toISOString()
         : new Date().toISOString();
 
       setDialogError("");
-      await runAction("/api/dashboard/actions/add-transaction", {
-        title: `Piutang: ${debtor}`,
-        category: "Piutang",
-        direction: "income",
+      await runAction("/api/dashboard/actions/add-receivable", {
+        debtor,
         amount,
+        status,
         occurredAt,
       });
       closeDialog();
     },
     [closeDialog, runAction, setDialogError],
+  );
+
+  const onToggleDebtStatus = useCallback(
+    async (transactionId: string, status: "paid" | "unpaid") => {
+      setDialogError("");
+      await runAction("/api/dashboard/actions/update-debt-status", {
+        transactionId,
+        status,
+      });
+      setOpenDebtMenuId(null);
+    },
+    [runAction, setDialogError],
   );
 
   const onSubmitRunDebtStrategy = useCallback(
@@ -1437,6 +1557,17 @@ export function DashboardClientScreen({
       min: 0,
       step: 1000,
     },
+    {
+      name: "status",
+      label: "Status pembayaran",
+      type: "select",
+      placeholder: "Pilih status",
+      required: true,
+      options: [
+        { label: "Unpaid (belum dibayar)", value: "unpaid" },
+        { label: "Paid (sudah dibayar)", value: "paid" },
+      ],
+    },
   ];
 
   const receivableFields: ActionFormDialogField[] = [
@@ -1455,6 +1586,17 @@ export function DashboardClientScreen({
       formatThousands: true,
       min: 0,
       step: 1000,
+    },
+    {
+      name: "status",
+      label: "Status pembayaran",
+      type: "select",
+      placeholder: "Pilih status",
+      required: true,
+      options: [
+        { label: "Unpaid (belum dibayar)", value: "unpaid" },
+        { label: "Paid (sudah dibayar)", value: "paid" },
+      ],
     },
     {
       name: "expectedDate",
@@ -1486,6 +1628,24 @@ export function DashboardClientScreen({
     },
   ];
 
+  const debtEntries = useMemo(
+    () =>
+      viewModel.recentTransactions
+        .map((item) => mapDebtEntryFromTransaction(item))
+        .filter((item): item is DebtEntry => item !== null),
+    [viewModel.recentTransactions],
+  );
+
+  const payableEntries = useMemo(
+    () => debtEntries.filter((item) => item.kind === "payable"),
+    [debtEntries],
+  );
+
+  const receivableEntries = useMemo(
+    () => debtEntries.filter((item) => item.kind === "receivable"),
+    [debtEntries],
+  );
+
   const renderScreen = () => {
     if (screen === "dashboard") {
       return (
@@ -1493,9 +1653,11 @@ export function DashboardClientScreen({
           viewModel={viewModel}
           activeSidebarItemId="dashboard"
           locale={locale}
-          onAddWidget={() => void onCreateGoal()}
-          onSelectDateRange={() => void onSelectDateRange()}
-          onOpenDailyLimitSettings={() => void onOpenDailyLimitSettings()}
+          onAddWidgetAction={() => void onCreateGoal()}
+          onSelectDateRangeAction={() => void onSelectDateRange()}
+          onOpenDailyLimitSettingsAction={() => void onOpenDailyLimitSettings()}
+          isSectionLoading={isApiLoading}
+          loadingLabel="Memuat konten dashboard..."
         />
       );
     }
@@ -1507,6 +1669,8 @@ export function DashboardClientScreen({
           locale={locale}
           onAddFunds={() => void onAddFunds()}
           onSelectDateRange={() => void onSelectDateRange()}
+          isSectionLoading={isApiLoading}
+          loadingLabel="Memuat konten dompet..."
         />
       );
     }
@@ -1537,6 +1701,7 @@ export function DashboardClientScreen({
           }}
           onAddTransactionAction={() => void onAddTransaction()}
           onSelectDateRangeAction={() => void onSelectDateRange()}
+          isSectionLoading={isApiLoading}
         />
       );
     }
@@ -1549,6 +1714,8 @@ export function DashboardClientScreen({
           onCreateGoal={() => void onCreateGoal()}
           onAdjustPlanForGoal={(goalId) => void onAdjustPlan(goalId)}
           onSelectDateRange={() => void onSelectDateRange()}
+          isSectionLoading={isApiLoading}
+          loadingLabel="Memuat tujuan..."
         />
       );
     }
@@ -1560,6 +1727,7 @@ export function DashboardClientScreen({
           locale={locale}
           onSelectDateRange={() => void onSelectDateRange()}
           onExportReport={() => void onExportReport()}
+          isLoading={isApiLoading}
         />
       );
     }
@@ -1575,6 +1743,8 @@ export function DashboardClientScreen({
           onPrimaryAction={() => void onOpenOverSpeedAlert()}
           secondaryActionLabel="Konfigurasi Rollover"
           onSecondaryAction={() => void onOpenRolloverBudget()}
+          isSectionLoading={isApiLoading}
+          loadingLabel="Memuat Smart Budgeting..."
           metrics={[
             {
               label: "Penggunaan batas harian",
@@ -1608,6 +1778,8 @@ export function DashboardClientScreen({
           onPrimaryAction={() => void onOpenAddSubscription()}
           secondaryActionLabel="Tambah Tagihan"
           onSecondaryAction={() => void onOpenAddBill()}
+          isSectionLoading={isApiLoading}
+          loadingLabel="Memuat tagihan rutin..."
           metrics={[
             {
               label: "Pengeluaran bulanan",
@@ -1635,30 +1807,40 @@ export function DashboardClientScreen({
         <FeatureWorkspaceScreen
           activeSidebarItemId="financial-health"
           title="Financial Health Score"
-          subtitle="Interpretasi kesehatan keuangan berdasarkan rasio menabung, dana darurat, dan stabilitas beban cicilan."
-          badgeLabel="Health Score"
+          subtitle="Interpretasi kesehatan keuangan berdasarkan Debt-to-Income Ratio (maks 35%) dan Emergency Fund Ratio (minimal 3x pengeluaran)."
+          badgeLabel={`Health Score • ${viewModel.financialHealth.statusLabel}`}
           primaryActionLabel="Atur Rentang Data"
           onPrimaryAction={() => void onSelectDateRange()}
           secondaryActionLabel="Ekspor Ringkasan"
           onSecondaryAction={() => void onExportReport()}
+          isSectionLoading={isApiLoading}
+          loadingLabel="Memuat health score..."
           metrics={[
             {
-              label: "Total saldo",
-              value: viewModel.summary.totalBalance,
+              label: "Status",
+              value: viewModel.financialHealth.statusLabel,
             },
             {
-              label: "Pemasukan bulanan",
-              value: viewModel.summary.monthlyIncome,
+              label: "Debt-to-Income Ratio",
+              value: viewModel.financialHealth.debtToIncomeRatioLabel,
             },
             {
-              label: "Pengeluaran bulanan",
-              value: viewModel.summary.monthlyExpense,
+              label: "Emergency Fund Ratio",
+              value: viewModel.financialHealth.emergencyFundRatioLabel,
             },
           ]}
           notes={[
-            "Rasio menabung ideal di atas 20% dari pemasukan.",
-            "Dana darurat yang sehat minimal mencakup 3 bulan biaya hidup.",
-            "Debt-to-Income Ratio digunakan untuk mengecek beban cicilan tetap aman.",
+            `Cicilan bulanan: ${viewModel.financialHealth.monthlyDebtInstallmentLabel} • Pemasukan bulanan: ${viewModel.financialHealth.monthlyIncomeLabel}.`,
+            `Saldo dana darurat: ${viewModel.financialHealth.emergencyFundBalanceLabel} • Pengeluaran bulanan: ${viewModel.financialHealth.monthlyExpenseLabel}.`,
+            `DTI ${
+              viewModel.financialHealth.debtToIncomeHealthy
+                ? "aman"
+                : "melewati batas"
+            } (maks 35%) dan dana darurat ${
+              viewModel.financialHealth.emergencyFundHealthy
+                ? "sudah memenuhi"
+                : "belum memenuhi"
+            } target minimal 3x pengeluaran.`,
           ]}
         />
       );
@@ -1666,42 +1848,194 @@ export function DashboardClientScreen({
 
     if (screen === "debt-manager") {
       return (
-        <FeatureWorkspaceScreen
+        <SidebarPageShell
           activeSidebarItemId="debt-manager"
           title="Debt Manager"
-          subtitle="Kelola hutang, piutang, dan strategi pelunasan Snowball / Avalanche dalam satu tempat."
+          subtitle="Kelola hutang, piutang, dan ubah status langsung dari daftar."
           badgeLabel="Hutang & Piutang"
-          primaryActionLabel="Tambah Hutang"
-          onPrimaryAction={() => void onOpenAddDebt()}
-          secondaryActionLabel="Catat Piutang"
-          onSecondaryAction={() => void onOpenAddReceivable()}
-          metrics={[
-            {
-              label: "Pengeluaran bulan ini",
-              value: viewModel.summary.monthlyExpense,
-            },
-            {
-              label: "Saldo tersedia",
-              value: viewModel.summary.availableToSpend,
-            },
-            {
-              label: "Aktivitas hutang/piutang",
-              value: `${
-                viewModel.recentTransactions.filter((item) => {
-                  const text = `${item.title} ${item.category}`.toLowerCase();
-                  return text.includes("hutang") || text.includes("piutang");
-                }).length
-              } transaksi`,
-            },
-          ]}
-          notes={[
-            "Gunakan log piutang untuk mencatat siapa yang meminjam uang Anda.",
-            "Debt Snowball fokus melunasi saldo terkecil lebih dulu.",
-            "Debt Avalanche fokus melunasi bunga tertinggi lebih dulu.",
-          ]}
-          tertiaryActionLabel="Jalankan Snowball/Avalanche"
-          onTertiaryAction={() => void onOpenRunDebtStrategy()}
-        />
+          isSectionLoading={isApiLoading}
+          loadingLabel="Memuat debt manager..."
+          headerActions={
+            <>
+              <ActionPill
+                label="Catat Piutang"
+                tone="outline"
+                onClick={() => void onOpenAddReceivable()}
+              />
+              <ActionPill
+                label="Tambah Hutang"
+                tone="primary"
+                onClick={() => void onOpenAddDebt()}
+              />
+            </>
+          }
+        >
+          <div className="space-y-6">
+            <ActionPill
+              label="Jalankan Snowball/Avalanche"
+              tone="outline"
+              onClick={() => void onOpenRunDebtStrategy()}
+            />
+
+            <section className="grid gap-6 md:grid-cols-2">
+              <DashboardCard
+                title="Daftar Hutang (Accounts Payable)"
+                subtitle="Orang/lembaga yang harus Anda bayar"
+              >
+                {payableEntries.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-border px-3 py-5 text-sm text-muted">
+                    Belum ada data hutang.
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {payableEntries.map((item) => (
+                      <li
+                        key={item.id}
+                        className="relative rounded-xl border border-border bg-surface-2 px-3 py-2.5"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-foreground">
+                              {item.partyName}
+                            </p>
+                            <p className="mt-0.5 text-xs text-muted">
+                              {item.amountLabel} • {item.dateLabel}
+                            </p>
+                            <span
+                              className={cn(
+                                "mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                                item.status === "paid"
+                                  ? "bg-success/10 text-success"
+                                  : "bg-accent/15 text-accent",
+                              )}
+                            >
+                              {debtStatusLabel(item.status)}
+                            </span>
+                          </div>
+
+                          <div className="relative">
+                            <button
+                              type="button"
+                              aria-label={`Ubah status hutang ${item.partyName}`}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-muted hover:text-foreground"
+                              onClick={() =>
+                                setOpenDebtMenuId((current) =>
+                                  current === item.id ? null : item.id,
+                                )
+                              }
+                            >
+                              <MoreIcon />
+                            </button>
+
+                            {openDebtMenuId === item.id ? (
+                              <div className="absolute right-0 top-9 z-20 w-36 overflow-hidden rounded-lg border border-border bg-surface shadow-md">
+                                <button
+                                  type="button"
+                                  className="block w-full px-3 py-2 text-left text-xs text-foreground hover:bg-surface-2"
+                                  onClick={() =>
+                                    void onToggleDebtStatus(
+                                      item.id,
+                                      item.status === "paid"
+                                        ? "unpaid"
+                                        : "paid",
+                                    )
+                                  }
+                                >
+                                  Tandai{" "}
+                                  {item.status === "paid"
+                                    ? "Belum Lunas"
+                                    : "Lunas"}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </DashboardCard>
+
+              <DashboardCard
+                title="Daftar Piutang (Accounts Receivable)"
+                subtitle="Orang yang meminjam uang dari Anda"
+              >
+                {receivableEntries.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-border px-3 py-5 text-sm text-muted">
+                    Belum ada data piutang.
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {receivableEntries.map((item) => (
+                      <li
+                        key={item.id}
+                        className="relative rounded-xl border border-border bg-surface-2 px-3 py-2.5"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-foreground">
+                              {item.partyName}
+                            </p>
+                            <p className="mt-0.5 text-xs text-muted">
+                              {item.amountLabel} • {item.dateLabel}
+                            </p>
+                            <span
+                              className={cn(
+                                "mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                                item.status === "paid"
+                                  ? "bg-success/10 text-success"
+                                  : "bg-accent/15 text-accent",
+                              )}
+                            >
+                              {debtStatusLabel(item.status)}
+                            </span>
+                          </div>
+
+                          <div className="relative">
+                            <button
+                              type="button"
+                              aria-label={`Ubah status piutang ${item.partyName}`}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-muted hover:text-foreground"
+                              onClick={() =>
+                                setOpenDebtMenuId((current) =>
+                                  current === item.id ? null : item.id,
+                                )
+                              }
+                            >
+                              <MoreIcon />
+                            </button>
+
+                            {openDebtMenuId === item.id ? (
+                              <div className="absolute right-0 top-9 z-20 w-36 overflow-hidden rounded-lg border border-border bg-surface shadow-md">
+                                <button
+                                  type="button"
+                                  className="block w-full px-3 py-2 text-left text-xs text-foreground hover:bg-surface-2"
+                                  onClick={() =>
+                                    void onToggleDebtStatus(
+                                      item.id,
+                                      item.status === "paid"
+                                        ? "unpaid"
+                                        : "paid",
+                                    )
+                                  }
+                                >
+                                  Tandai{" "}
+                                  {item.status === "paid"
+                                    ? "Belum Lunas"
+                                    : "Lunas"}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </DashboardCard>
+            </section>
+          </div>
+        </SidebarPageShell>
       );
     }
 
@@ -1718,6 +2052,7 @@ export function DashboardClientScreen({
         onPreviewChanges={() => void onSelectDateRange()}
         onSaveSettings={onSaveSettings}
         onResetSessions={onResetSessions}
+        isSectionLoading={isApiLoading}
       />
     );
   };
@@ -1943,6 +2278,8 @@ type FeatureWorkspaceScreenProps = {
   readonly onTertiaryAction?: () => void;
   readonly metrics: ReadonlyArray<{ label: string; value: string }>;
   readonly notes: ReadonlyArray<string>;
+  readonly isSectionLoading?: boolean;
+  readonly loadingLabel?: string;
 };
 
 function FeatureWorkspaceScreen({
@@ -1958,6 +2295,8 @@ function FeatureWorkspaceScreen({
   onTertiaryAction,
   metrics,
   notes,
+  isSectionLoading = false,
+  loadingLabel = "Memuat konten...",
 }: FeatureWorkspaceScreenProps) {
   return (
     <SidebarPageShell
@@ -1965,6 +2304,8 @@ function FeatureWorkspaceScreen({
       title={title}
       subtitle={subtitle}
       badgeLabel={badgeLabel}
+      isSectionLoading={isSectionLoading}
+      loadingLabel={loadingLabel}
       headerActions={
         <>
           {secondaryActionLabel ? (
@@ -2077,6 +2418,20 @@ function toPositiveNumberFromUnknown(value: unknown): number | null {
   return parsed;
 }
 
+function toNonNegativeNumberFromUnknown(value: unknown): number | null {
+  if (value === undefined || value === null) return 0;
+
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number(normalizeAmountInput(value))
+        : Number.NaN;
+
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed;
+}
+
 function toNonNegativeNumber(value: string): number | null {
   const parsed = Number(normalizeAmountInput(value));
   if (!Number.isFinite(parsed) || parsed < 0) return null;
@@ -2103,6 +2458,96 @@ function normalizeDirection(value: string): "income" | "expense" | undefined {
     return normalized;
   }
   return undefined;
+}
+
+function normalizePaymentStatus(value: string): "paid" | "unpaid" | undefined {
+  const normalized = value.trim().toLowerCase();
+
+  if (normalized === "paid" || normalized === "lunas") {
+    return "paid";
+  }
+
+  if (
+    normalized === "unpaid" ||
+    normalized === "belum lunas" ||
+    normalized === "belum-lunas" ||
+    normalized === "belum_lunas"
+  ) {
+    return "unpaid";
+  }
+
+  return undefined;
+}
+
+type DebtEntry = {
+  readonly id: string;
+  readonly kind: "payable" | "receivable";
+  readonly partyName: string;
+  readonly amountLabel: string;
+  readonly dateLabel: string;
+  readonly status: "paid" | "unpaid";
+};
+
+function mapDebtEntryFromTransaction(
+  item: DashboardViewModel["recentTransactions"][number],
+): DebtEntry | null {
+  const kind = resolveDebtKind(item.title, item.category);
+  if (!kind) return null;
+
+  return {
+    id: item.id,
+    kind,
+    partyName: extractDebtPartyName(item.title, kind),
+    amountLabel: item.amountLabel,
+    dateLabel: item.dateLabel,
+    status: parseDebtStatus(item.title),
+  };
+}
+
+function resolveDebtKind(
+  title: string,
+  category: string,
+): "payable" | "receivable" | null {
+  const text = `${title} ${category}`.toLowerCase();
+  if (text.includes("hutang")) return "payable";
+  if (text.includes("piutang")) return "receivable";
+  return null;
+}
+
+function parseDebtStatus(title: string): "paid" | "unpaid" {
+  return /\(\s*lunas\s*\)\s*$/i.test(title) ? "paid" : "unpaid";
+}
+
+function extractDebtPartyName(
+  title: string,
+  kind: "payable" | "receivable",
+): string {
+  const prefix =
+    kind === "payable" ? /^(cicilan|hutang)\s*:\s*/i : /^piutang\s*:\s*/i;
+  const cleaned = title
+    .replace(prefix, "")
+    .replace(/\s*\((?:Lunas|Belum Lunas)\)\s*$/i, "")
+    .trim();
+
+  return cleaned || (kind === "payable" ? "Kreditur" : "Peminjam");
+}
+
+function debtStatusLabel(status: "paid" | "unpaid"): string {
+  return status === "paid" ? "Lunas" : "Belum Lunas";
+}
+
+function MoreIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden>
+      <circle cx="4" cy="10" r="1.5" fill="currentColor" />
+      <circle cx="10" cy="10" r="1.5" fill="currentColor" />
+      <circle cx="16" cy="10" r="1.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+function cn(...classes: Array<string | false | null | undefined>): string {
+  return classes.filter(Boolean).join(" ");
 }
 
 function toIsoDate(value: string): string | undefined {

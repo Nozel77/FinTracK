@@ -11,6 +11,7 @@ import type {
   TransactionDirection,
   WeeklyTrendPoint,
 } from "@/src/features/dashboard/domain/dashboard";
+import { calculateFinancialHealth } from "@/src/features/dashboard/domain/financial-health";
 import type { Tables } from "@/src/shared/supabase/database.types";
 import {
   createSupabaseServerClient,
@@ -24,6 +25,7 @@ type WeeklyTrendRow = Tables<"weekly_trend_points">;
 type SpendingBreakdownRow = Tables<"spending_breakdown_items">;
 type FinancialGoalRow = Tables<"financial_goals">;
 type TransactionRow = Tables<"transactions">;
+type UserSettingsRow = Tables<"user_settings">;
 
 type SupabaseDashboardRepositoryOptions = {
   readonly userId?: string;
@@ -55,6 +57,7 @@ export class SupabaseDashboardRepository implements DashboardRepository {
       spendingBreakdown,
       goals,
       dailyLimit,
+      financialHealthInputSettings,
     ] = await Promise.all([
       this.fetchBalanceSummary(client, userId, range, transactions),
       this.fetchShortcuts(client, userId),
@@ -62,7 +65,15 @@ export class SupabaseDashboardRepository implements DashboardRepository {
       this.fetchSpendingBreakdown(client, userId, range, transactions),
       this.fetchGoals(client, userId),
       this.fetchDailyLimit(client, userId, range, transactions),
+      this.fetchFinancialHealthInputSettings(client, userId),
     ]);
+
+    const financialHealth = buildFinancialHealthSnapshot(
+      balanceSummary,
+      transactions,
+      goals,
+      financialHealthInputSettings,
+    );
 
     return {
       range,
@@ -73,6 +84,7 @@ export class SupabaseDashboardRepository implements DashboardRepository {
       goals,
       recentTransactions: transactions.slice(0, 10),
       dailyTransactionLimit: dailyLimit,
+      financialHealth,
     };
   }
 
@@ -323,6 +335,57 @@ export class SupabaseDashboardRepository implements DashboardRepository {
       limit: toMoney(configuredLimit),
     };
   }
+
+  private async fetchFinancialHealthInputSettings(
+    client: TypedSupabaseServerClient,
+    userId: string,
+  ): Promise<
+    | {
+        monthlyDebtInstallment: number;
+        emergencyFundBalance: number;
+      }
+    | undefined
+  > {
+    const { data, error } = await client
+      .from("user_settings")
+      .select("monthly_debt_installment,emergency_fund_balance")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) {
+      if (isMissingOptionalUserSettingsColumnError(error.message)) {
+        return undefined;
+      }
+
+      throw new Error(
+        `[supabase-dashboard-repository] Failed to load financial health inputs: ${error.message}`,
+      );
+    }
+
+    if (!data) {
+      return undefined;
+    }
+
+    const row = data as Pick<
+      UserSettingsRow,
+      "monthly_debt_installment" | "emergency_fund_balance"
+    >;
+
+    return {
+      monthlyDebtInstallment:
+        typeof row.monthly_debt_installment === "number" &&
+        Number.isFinite(row.monthly_debt_installment) &&
+        row.monthly_debt_installment >= 0
+          ? row.monthly_debt_installment
+          : 0,
+      emergencyFundBalance:
+        typeof row.emergency_fund_balance === "number" &&
+        Number.isFinite(row.emergency_fund_balance) &&
+        row.emergency_fund_balance >= 0
+          ? row.emergency_fund_balance
+          : 0,
+    };
+  }
 }
 
 export function createSupabaseDashboardRepository(
@@ -415,6 +478,75 @@ function buildSpendingBreakdownFromTransactions(
       colorHex: palette[index % palette.length],
     }))
     .sort((a, b) => b.amount.amount - a.amount.amount);
+}
+
+function buildFinancialHealthSnapshot(
+  balance: {
+    monthlyIncome: Money;
+    monthlyExpense: Money;
+  },
+  transactions: ReadonlyArray<Transaction>,
+  goals: ReadonlyArray<FinancialGoal>,
+  settings?: {
+    monthlyDebtInstallment: number;
+    emergencyFundBalance: number;
+  },
+) {
+  const monthlyDebtInstallment =
+    settings?.monthlyDebtInstallment ??
+    sumDebtInstallmentFromTransactions(transactions);
+  const emergencyFundBalance =
+    settings?.emergencyFundBalance ?? resolveEmergencyFundBalance(goals);
+
+  return calculateFinancialHealth({
+    monthlyIncome: balance.monthlyIncome,
+    monthlyExpense: balance.monthlyExpense,
+    monthlyDebtInstallment: toMoney(monthlyDebtInstallment),
+    emergencyFundBalance: toMoney(emergencyFundBalance),
+  });
+}
+
+function sumDebtInstallmentFromTransactions(
+  transactions: ReadonlyArray<Transaction>,
+): number {
+  return transactions
+    .filter(
+      (tx) =>
+        tx.direction === "expense" &&
+        (isDebtKeyword(tx.category) || isDebtKeyword(tx.title)),
+    )
+    .reduce((sum, tx) => sum + tx.amount.amount, 0);
+}
+
+function resolveEmergencyFundBalance(
+  goals: ReadonlyArray<FinancialGoal>,
+): number {
+  const emergencyGoals = goals.filter((goal) =>
+    isEmergencyFundKeyword(goal.name),
+  );
+
+  if (emergencyGoals.length === 0) {
+    return 0;
+  }
+
+  return emergencyGoals.reduce(
+    (max, goal) => Math.max(max, goal.saved.amount),
+    0,
+  );
+}
+
+function isDebtKeyword(value: string): boolean {
+  return /(cicilan|hutang|utang|debt|loan|kredit)/i.test(value);
+}
+
+function isEmergencyFundKeyword(value: string): boolean {
+  return /(dana\s*darurat|emergency\s*fund)/i.test(value);
+}
+
+function isMissingOptionalUserSettingsColumnError(message: string): boolean {
+  return /column\s+user_settings\.(monthly_debt_installment|emergency_fund_balance)\s+does not exist/i.test(
+    message,
+  );
 }
 
 function clamp(value: number, min: number, max: number): number {

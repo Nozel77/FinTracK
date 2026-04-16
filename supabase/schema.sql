@@ -167,6 +167,8 @@ create table if not exists public.user_settings (
   monthly_report boolean not null default false,
   compact_mode boolean not null default false,
   daily_transaction_limit numeric(14,2) not null default 10000000 check (daily_transaction_limit > 0),
+  monthly_debt_installment numeric(14,2) not null default 0 check (monthly_debt_installment >= 0),
+  emergency_fund_balance numeric(14,2) not null default 0 check (emergency_fund_balance >= 0),
   updated_at timestamptz not null default now()
 );
 
@@ -176,22 +178,69 @@ create table if not exists public.user_settings (
 alter table public.user_settings
   add column if not exists daily_transaction_limit numeric(14,2);
 
+alter table public.user_settings
+  add column if not exists monthly_debt_installment numeric(14,2);
+
+alter table public.user_settings
+  add column if not exists emergency_fund_balance numeric(14,2);
+
 update public.user_settings
-set daily_transaction_limit = 10000000
-where daily_transaction_limit is null or daily_transaction_limit <= 0;
+set
+  daily_transaction_limit = case
+    when daily_transaction_limit is null or daily_transaction_limit <= 0 then 10000000
+    else daily_transaction_limit
+  end,
+  monthly_debt_installment = case
+    when monthly_debt_installment is null or monthly_debt_installment < 0 then 0
+    else monthly_debt_installment
+  end,
+  emergency_fund_balance = case
+    when emergency_fund_balance is null or emergency_fund_balance < 0 then 0
+    else emergency_fund_balance
+  end
+where
+  daily_transaction_limit is null or daily_transaction_limit <= 0
+  or monthly_debt_installment is null or monthly_debt_installment < 0
+  or emergency_fund_balance is null or emergency_fund_balance < 0;
 
 alter table public.user_settings
   alter column daily_transaction_limit set default 10000000;
 
 alter table public.user_settings
+  alter column monthly_debt_installment set default 0;
+
+alter table public.user_settings
+  alter column emergency_fund_balance set default 0;
+
+alter table public.user_settings
   alter column daily_transaction_limit set not null;
+
+alter table public.user_settings
+  alter column monthly_debt_installment set not null;
+
+alter table public.user_settings
+  alter column emergency_fund_balance set not null;
 
 alter table public.user_settings
   drop constraint if exists user_settings_daily_transaction_limit_check;
 
 alter table public.user_settings
+  drop constraint if exists user_settings_monthly_debt_installment_check;
+
+alter table public.user_settings
+  drop constraint if exists user_settings_emergency_fund_balance_check;
+
+alter table public.user_settings
   add constraint user_settings_daily_transaction_limit_check
   check (daily_transaction_limit > 0);
+
+alter table public.user_settings
+  add constraint user_settings_monthly_debt_installment_check
+  check (monthly_debt_installment >= 0);
+
+alter table public.user_settings
+  add constraint user_settings_emergency_fund_balance_check
+  check (emergency_fund_balance >= 0);
 
 -- =========================
 -- Indexes
@@ -324,11 +373,12 @@ begin
   -- user settings
   insert into public.user_settings (
     user_id, full_name, email, phone, role, currency, timezone, language, start_of_week,
-    email_alerts, push_notifications, monthly_report, compact_mode, daily_transaction_limit, updated_at
+    email_alerts, push_notifications, monthly_report, compact_mode, daily_transaction_limit,
+    monthly_debt_installment, emergency_fund_balance, updated_at
   ) values (
     v_user_id, 'Alex Morgan', 'alex.morgan@fintrack.app', '+62 812-0000-0000', 'Owner',
     'IDR', 'UTC+07:00 (Jakarta)', 'English (US)', 'Monday',
-    true, true, false, false, 10000000, now()
+    true, true, false, false, 10000000, 12500000, 120000000, now()
   )
   on conflict (user_id) do update set
     full_name = excluded.full_name,
@@ -344,6 +394,8 @@ begin
     monthly_report = excluded.monthly_report,
     compact_mode = excluded.compact_mode,
     daily_transaction_limit = excluded.daily_transaction_limit,
+    monthly_debt_installment = excluded.monthly_debt_installment,
+    emergency_fund_balance = excluded.emergency_fund_balance,
     updated_at = now();
 
   -- shortcuts

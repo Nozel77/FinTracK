@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Manrope } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -23,8 +24,19 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const setInitialThemeScript = `(function(){try{var key="dashboard.theme";var stored=localStorage.getItem(key);var theme=(stored==="dark"||stored==="light")?stored:(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;document.documentElement.style.colorScheme=theme;}catch(_e){}})();`;
+
   return (
-    <html lang="id" className={`${manrope.variable} h-full antialiased`}>
+    <html
+      lang="id"
+      className={`${manrope.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
+      <head>
+        <Script id="initial-theme" strategy="beforeInteractive">
+          {setInitialThemeScript}
+        </Script>
+      </head>
       <body className="min-h-full flex flex-col bg-background text-foreground font-sans">
         {children}
       </body>

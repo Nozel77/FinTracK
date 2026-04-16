@@ -62,6 +62,32 @@ export interface ActionShortcut {
   readonly isPrimary: boolean;
 }
 
+export type FinancialHealthStatus = "Sehat" | "Waspada" | "Bahaya";
+
+export interface FinancialHealthInput {
+  readonly monthlyIncome: Money;
+  readonly monthlyExpense: Money;
+  readonly monthlyDebtInstallment: Money;
+  readonly emergencyFundBalance: Money;
+}
+
+export interface FinancialHealthRatios {
+  readonly debtToIncomeRatioPct: number;
+  readonly emergencyFundRatioMonths: number;
+}
+
+export interface FinancialHealthEvaluation {
+  readonly debtToIncomeHealthy: boolean; // debt-to-income <= 35%
+  readonly emergencyFundHealthy: boolean; // emergency fund >= 3x monthly expense
+}
+
+export interface FinancialHealthSnapshot {
+  readonly input: FinancialHealthInput;
+  readonly ratios: FinancialHealthRatios;
+  readonly evaluation: FinancialHealthEvaluation;
+  readonly status: FinancialHealthStatus;
+}
+
 export interface DashboardSnapshot {
   readonly range: DateRange;
   readonly balance: BalanceSummary;
@@ -71,6 +97,7 @@ export interface DashboardSnapshot {
   readonly goals: ReadonlyArray<FinancialGoal>;
   readonly recentTransactions: ReadonlyArray<Transaction>;
   readonly dailyTransactionLimit: DailyTransactionLimit;
+  readonly financialHealth?: FinancialHealthSnapshot;
 }
 
 export interface DashboardRepository {

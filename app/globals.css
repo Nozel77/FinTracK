@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
 :root {
+    color-scheme: light;
+
     /* Base theme */
     --background: #f8fbff;
     --foreground: #0f172a;
@@ -33,6 +35,8 @@
 }
 
 [data-theme="dark"] {
+    color-scheme: dark;
+
     /* Base theme */
     --background: #020817;
     --foreground: #e2e8f0;

@@ -5,10 +5,8 @@ import type { ChangeEventHandler, MouseEventHandler } from "react";
 import { ActionPill } from "../components/action-pill";
 import { DashboardCard } from "../components/dashboard-card";
 import { PaginationControls } from "../components/pagination-controls";
-import {
-  SidebarPageShell,
-  type SidebarPageThemeOverrides,
-} from "./sidebar-page-shell";
+import { SidebarPageShell } from "./sidebar-page-shell";
+import { LIGHT_BLUE_THEME } from "./light-blue-theme";
 import type { DashboardViewModel } from "../view-models/dashboard-view-model";
 
 export type TransactionFilter = "all" | "income" | "expense";
@@ -26,6 +24,7 @@ type TransactionsScreenProps = {
   readonly transactionsPage?: number;
   readonly transactionsPageSize?: number;
   readonly onTransactionsPageChangeAction?: (nextPage: number) => void;
+  readonly isSectionLoading?: boolean;
 };
 
 const FILTER_IDS: ReadonlyArray<TransactionFilter> = [
@@ -34,20 +33,7 @@ const FILTER_IDS: ReadonlyArray<TransactionFilter> = [
   "expense",
 ];
 
-const transactionsTheme: SidebarPageThemeOverrides = {
-  background: "#f7fbff",
-  surface: "#ffffff",
-  surface2: "#eef6ff",
-  border: "#d7e6f8",
-  foreground: "#0f172a",
-  muted: "#5e7187",
-  primary: "#0ea5e9",
-  primaryHover: "#0284c7",
-  primarySoft: "#e0f2fe",
-  accent: "#38bdf8",
-  success: "#16a34a",
-  danger: "#ef4444",
-};
+const transactionsTheme = LIGHT_BLUE_THEME;
 
 export function TransactionsScreen({
   viewModel,
@@ -62,6 +48,7 @@ export function TransactionsScreen({
   transactionsPage = 1,
   transactionsPageSize = 10,
   onTransactionsPageChangeAction,
+  isSectionLoading = false,
 }: TransactionsScreenProps) {
   const filteredTransactions = viewModel.recentTransactions.filter(
     (transaction) => {
@@ -108,6 +95,10 @@ export function TransactionsScreen({
       title={copy.title}
       subtitle={copy.subtitle}
       badgeLabel={copy.badgeLabel}
+      isSectionLoading={isSectionLoading}
+      loadingLabel={
+        locale === "id" ? "Memuat transaksi..." : "Loading transactions..."
+      }
       themeOverrides={transactionsTheme}
       headerActions={
         <>

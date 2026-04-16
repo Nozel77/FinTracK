@@ -3,6 +3,7 @@ import type { MouseEventHandler } from "react";
 import { ActionPill } from "../components/action-pill";
 import { DashboardCard } from "../components/dashboard-card";
 import { SidebarPageShell } from "./sidebar-page-shell";
+import { LIGHT_BLUE_THEME } from "./light-blue-theme";
 import type { DashboardViewModel } from "../view-models/dashboard-view-model";
 
 type WalletLocale = "en" | "id";
@@ -12,22 +13,11 @@ export type WalletScreenProps = {
   readonly locale?: WalletLocale;
   readonly onAddFunds?: MouseEventHandler<HTMLButtonElement>;
   readonly onSelectDateRange?: MouseEventHandler<HTMLButtonElement>;
+  readonly isSectionLoading?: boolean;
+  readonly loadingLabel?: string;
 };
 
-const walletTheme = {
-  background: "#f6fbf9",
-  foreground: "#0f172a",
-  surface: "#ffffff",
-  surface2: "#eef7f3",
-  border: "#d3e8df",
-  muted: "#4b6b5f",
-  primary: "#0f9f6e",
-  primaryHover: "#0b7f58",
-  primarySoft: "#d9f5ea",
-  accent: "#14b87a",
-  success: "#0f9f6e",
-  danger: "#ef4444",
-} as const;
+const walletTheme = LIGHT_BLUE_THEME;
 
 const WALLET_COPY: Record<
   WalletLocale,
@@ -121,6 +111,8 @@ export function WalletScreen({
   locale = "id",
   onAddFunds,
   onSelectDateRange,
+  isSectionLoading = false,
+  loadingLabel = "Memuat konten dompet...",
 }: WalletScreenProps) {
   const copy = WALLET_COPY[locale];
   const topAllocation = viewModel.spendingBreakdown[0];
@@ -139,6 +131,8 @@ export function WalletScreen({
       title={copy.title}
       subtitle={copy.subtitle}
       badgeLabel={copy.badgeLabel}
+      isSectionLoading={isSectionLoading}
+      loadingLabel={loadingLabel}
       themeOverrides={walletTheme}
       headerActions={
         <>

@@ -49,6 +49,33 @@ type AddTransactionInput = {
   readonly occurredAt?: string;
 };
 
+type PaymentStatus = "paid" | "unpaid";
+
+type AddPayableInput = {
+  readonly userId?: string;
+  readonly creditor: string;
+  readonly amount: number;
+  readonly status: PaymentStatus;
+  readonly accountId?: string;
+  readonly occurredAt?: string;
+};
+
+type AddReceivableInput = {
+  readonly userId?: string;
+  readonly debtor: string;
+  readonly amount: number;
+  readonly status: PaymentStatus;
+  readonly accountId?: string;
+  readonly occurredAt?: string;
+};
+
+type UpdateDebtStatusInput = {
+  readonly userId?: string;
+  readonly transactionId: string;
+  readonly status: PaymentStatus;
+  readonly accountId?: string;
+};
+
 type CreateGoalInput = {
   readonly userId?: string;
   readonly name: string;
@@ -82,6 +109,8 @@ type SaveSettingsInput = {
     readonly language?: string;
     readonly startOfWeek?: StartOfWeek;
     readonly dailyTransactionLimit?: number;
+    readonly monthlyDebtInstallment?: number;
+    readonly emergencyFundBalance?: number;
   };
   readonly toggles?: {
     readonly emailAlerts?: boolean;
@@ -159,6 +188,174 @@ export class DashboardActionService {
 
     return this.success("Transaction recorded successfully.", {
       transactionId,
+    });
+  }
+
+  async addPayable(
+    input: AddPayableInput,
+  ): Promise<ActionResult<{ transactionId: string; status: PaymentStatus }>> {
+    const amount = assertPositiveAmount(input.amount, "amount");
+    const context = await this.getContext(input.userId);
+    const occurredAt = normalizeISODateTime(input.occurredAt);
+    const creditor = input.creditor.trim();
+
+    if (!creditor) {
+      throw new Error(
+        '[dashboard-action-service] "creditor" must be a non-empty string.',
+      );
+    }
+
+    const isPaid = input.status === "paid";
+    const direction: TransactionDirection = isPaid ? "expense" : "transfer";
+
+    const transactionId = await this.insertTransaction(context, {
+      title: `Hutang: ${creditor} (${isPaid ? "Lunas" : "Belum Lunas"})`,
+      category: "Hutang",
+      direction,
+      amount,
+      occurredAt,
+    });
+
+    if (isPaid && input.accountId) {
+      await this.adjustLinkedAccountBalance(
+        context,
+        input.accountId,
+        toAccountDelta("expense", amount),
+      );
+    }
+
+    return this.success(
+      isPaid
+        ? "Payable recorded and marked as paid."
+        : "Payable recorded as unpaid.",
+      {
+        transactionId,
+        status: input.status,
+      },
+    );
+  }
+
+  async addReceivable(
+    input: AddReceivableInput,
+  ): Promise<ActionResult<{ transactionId: string; status: PaymentStatus }>> {
+    const amount = assertPositiveAmount(input.amount, "amount");
+    const context = await this.getContext(input.userId);
+    const occurredAt = normalizeISODateTime(input.occurredAt);
+    const debtor = input.debtor.trim();
+
+    if (!debtor) {
+      throw new Error(
+        '[dashboard-action-service] "debtor" must be a non-empty string.',
+      );
+    }
+
+    const isPaid = input.status === "paid";
+    const direction: TransactionDirection = isPaid ? "income" : "transfer";
+
+    const transactionId = await this.insertTransaction(context, {
+      title: `Piutang: ${debtor} (${isPaid ? "Lunas" : "Belum Lunas"})`,
+      category: "Piutang",
+      direction,
+      amount,
+      occurredAt,
+    });
+
+    if (isPaid && input.accountId) {
+      await this.adjustLinkedAccountBalance(
+        context,
+        input.accountId,
+        toAccountDelta("income", amount),
+      );
+    }
+
+    return this.success(
+      isPaid
+        ? "Receivable recorded and marked as paid."
+        : "Receivable recorded as unpaid.",
+      {
+        transactionId,
+        status: input.status,
+      },
+    );
+  }
+
+  async updateDebtStatus(
+    input: UpdateDebtStatusInput,
+  ): Promise<ActionResult<{ transactionId: string; status: PaymentStatus }>> {
+    const context = await this.getContext(input.userId);
+    const transactionId = input.transactionId.trim();
+
+    if (!transactionId) {
+      throw new Error(
+        '[dashboard-action-service] "transactionId" must be a non-empty string.',
+      );
+    }
+
+    const { data: transaction, error: readError } = await context.client
+      .from("transactions")
+      .select("id,title,category,direction,amount")
+      .eq("id", transactionId)
+      .eq("user_id", context.userId)
+      .maybeSingle();
+
+    if (readError) {
+      throw new Error(
+        `[dashboard-action-service] updateDebtStatus read failed: ${readError.message}`,
+      );
+    }
+
+    if (!transaction) {
+      throw new Error(
+        `[dashboard-action-service] Transaction "${transactionId}" not found.`,
+      );
+    }
+
+    const kind = resolveDebtKind(transaction.title, transaction.category);
+    if (!kind) {
+      throw new Error(
+        "[dashboard-action-service] Transaction is not payable/receivable.",
+      );
+    }
+
+    const nextDirection = toDebtDirection(kind, input.status);
+    const nextTitle = withDebtStatusSuffix(transaction.title, input.status);
+
+    const { error: updateError } = await context.client
+      .from("transactions")
+      .update({
+        direction: nextDirection,
+        title: nextTitle,
+        updated_at: nowIso(),
+      })
+      .eq("id", transaction.id)
+      .eq("user_id", context.userId);
+
+    if (updateError) {
+      throw new Error(
+        `[dashboard-action-service] updateDebtStatus update failed: ${updateError.message}`,
+      );
+    }
+
+    if (input.accountId) {
+      const previousDelta = toAccountDelta(
+        transaction.direction as TransactionDirection,
+        transaction.amount,
+      );
+      const nextDelta = toAccountDelta(nextDirection, transaction.amount);
+      const rebalanceDelta = nextDelta - previousDelta;
+
+      if (rebalanceDelta !== 0) {
+        await this.adjustLinkedAccountBalance(
+          context,
+          input.accountId,
+          rebalanceDelta,
+        );
+      }
+    }
+
+    return this.success("Debt status updated successfully.", {
+      transactionId: transaction.id,
+      status: input.status,
     });
   }
 
@@ -281,8 +478,12 @@ export class DashboardActionService {
       );
     }
 
-    const existingWithDailyLimit = existing as
-      | (typeof existing & { daily_transaction_limit?: number | null })
+    const existingWithFinancialHealthInputs = existing as
+      | (typeof existing & {
+          daily_transaction_limit?: number | null;
+          monthly_debt_installment?: number | null;
+          emergency_fund_balance?: number | null;
+        })
       | null;
 
     const payload: Inserts<"user_settings"> = {
@@ -318,19 +519,36 @@ export class DashboardActionService {
       updated_at: nowIso(),
     };
 
-    const payloadWithDailyLimit = payload as Inserts<"user_settings"> & {
-      daily_transaction_limit?: number;
-    };
+    const payloadWithFinancialHealthInputs =
+      payload as Inserts<"user_settings"> & {
+        daily_transaction_limit?: number;
+        monthly_debt_installment?: number;
+        emergency_fund_balance?: number;
+      };
 
-    payloadWithDailyLimit.daily_transaction_limit =
+    payloadWithFinancialHealthInputs.daily_transaction_limit =
       resolveDailyTransactionLimit(
         input.preferences?.dailyTransactionLimit,
-        existingWithDailyLimit?.daily_transaction_limit,
+        existingWithFinancialHealthInputs?.daily_transaction_limit,
+      );
+
+    payloadWithFinancialHealthInputs.monthly_debt_installment =
+      resolveNonNegativeAmount(
+        input.preferences?.monthlyDebtInstallment,
+        existingWithFinancialHealthInputs?.monthly_debt_installment,
+        "monthlyDebtInstallment",
+      );
+
+    payloadWithFinancialHealthInputs.emergency_fund_balance =
+      resolveNonNegativeAmount(
+        input.preferences?.emergencyFundBalance,
+        existingWithFinancialHealthInputs?.emergency_fund_balance,
+        "emergencyFundBalance",
       );
 
     const { error: upsertError } = await context.client
       .from("user_settings")
-      .upsert(payloadWithDailyLimit, { onConflict: "user_id" });
+      .upsert(payloadWithFinancialHealthInputs, { onConflict: "user_id" });
 
     if (upsertError) {
       throw new Error(
@@ -623,6 +841,32 @@ function resolveDailyTransactionLimit(
   return DEFAULT_DAILY_TRANSACTION_LIMIT;
 }
 
+function resolveNonNegativeAmount(
+  inputValue: number | undefined,
+  existingValue: number | null | undefined,
+  fieldName: string,
+): number {
+  if (inputValue !== undefined) {
+    if (!Number.isFinite(inputValue) || inputValue < 0) {
+      throw new Error(
+        `[dashboard-action-service] "${fieldName}" must be a non-negative number.`,
+      );
+    }
+    return inputValue;
+  }
+
+  if (typeof existingValue === "number") {
+    if (!Number.isFinite(existingValue) || existingValue < 0) {
+      throw new Error(
+        `[dashboard-action-service] "${fieldName}" must be a non-negative number.`,
+      );
+    }
+    return existingValue;
+  }
+
+  return 0;
+}
+
 function normalizeISODate(value: string): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -653,6 +897,35 @@ function toAccountDelta(
   if (direction === "income") return amount;
   if (direction === "expense") return -amount;
   return 0;
+}
+
+function resolveDebtKind(
+  title: string,
+  category: string,
+): "payable" | "receivable" | null {
+  const text = `${title} ${category}`.toLowerCase();
+  if (text.includes("hutang")) return "payable";
+  if (text.includes("piutang")) return "receivable";
+  return null;
+}
+
+function toDebtDirection(
+  kind: "payable" | "receivable",
+  status: PaymentStatus,
+): TransactionDirection {
+  if (kind === "payable") {
+    return status === "paid" ? "expense" : "transfer";
+  }
+
+  return status === "paid" ? "income" : "transfer";
+}
+
+function withDebtStatusSuffix(title: string, status: PaymentStatus): string {
+  const baseTitle = title
+    .replace(/\s*\((?:Lunas|Belum Lunas)\)\s*$/i, "")
+    .trim();
+
+  return `${baseTitle} (${status === "paid" ? "Lunas" : "Belum Lunas"})`;
 }
 
 function nowIso(): string {

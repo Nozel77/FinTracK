@@ -4,10 +4,8 @@ import { ActionPill } from "../components/action-pill";
 import { DashboardCard } from "../components/dashboard-card";
 import { SpendingBreakdownSection } from "../sections/spending-breakdown-section";
 import { WeeklyTrendSection } from "../sections/weekly-trend-section";
-import {
-  SidebarPageShell,
-  type SidebarPageThemeOverrides,
-} from "./sidebar-page-shell";
+import { SidebarPageShell } from "./sidebar-page-shell";
+import { LIGHT_BLUE_THEME } from "./light-blue-theme";
 import type { DashboardViewModel } from "../view-models/dashboard-view-model";
 import type { Locale } from "@/src/shared/i18n/locale";
 
@@ -16,28 +14,17 @@ export type AnalyticsScreenProps = {
   readonly locale?: Locale;
   readonly onSelectDateRange?: MouseEventHandler<HTMLButtonElement>;
   readonly onExportReport?: MouseEventHandler<HTMLButtonElement>;
+  readonly isLoading?: boolean;
 };
 
-const analyticsTheme: SidebarPageThemeOverrides = {
-  background: "#f3fcff",
-  surface: "#ffffff",
-  surface2: "#e8f9ff",
-  border: "#cdeffc",
-  foreground: "#052431",
-  muted: "#4b6b78",
-  primary: "#06b6d4",
-  primaryHover: "#0891b2",
-  primarySoft: "#cffafe",
-  accent: "#22d3ee",
-  success: "#0ea5a4",
-  danger: "#ef4444",
-};
+const analyticsTheme = LIGHT_BLUE_THEME;
 
 export function AnalyticsScreen({
   viewModel,
   locale = "id",
   onSelectDateRange,
   onExportReport,
+  isLoading = false,
 }: AnalyticsScreenProps) {
   const copy = getAnalyticsCopy(locale);
   const topCategories = getTopCategories(viewModel.spendingBreakdown, 4);
@@ -50,6 +37,8 @@ export function AnalyticsScreen({
       subtitle={copy.subtitle}
       badgeLabel={copy.badgeLabel}
       themeOverrides={analyticsTheme}
+      isSectionLoading={isLoading}
+      loadingLabel="Memuat data analitik..."
       headerActions={
         <>
           <ActionPill
@@ -82,7 +71,7 @@ export function AnalyticsScreen({
           <MetricCard
             label={copy.monthlyExpense}
             value={viewModel.summary.monthlyExpense}
-            toneClassName="text-cyan-700"
+            toneClassName="text-primary"
           />
           <MetricCard
             label={copy.availableToSpend}

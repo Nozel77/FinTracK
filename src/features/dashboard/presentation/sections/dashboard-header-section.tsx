@@ -8,8 +8,8 @@ type DashboardHeaderSectionProps = {
   readonly addWidgetLabel?: string;
   readonly locale?: HeaderLocale;
   readonly dateRangeLabel: string;
-  readonly onAddWidget?: MouseEventHandler<HTMLButtonElement>;
-  readonly onSelectDateRange?: MouseEventHandler<HTMLButtonElement>;
+  readonly onAddWidgetAction?: MouseEventHandler<HTMLButtonElement>;
+  readonly onSelectDateRangeAction?: MouseEventHandler<HTMLButtonElement>;
   readonly className?: string;
 };
 
@@ -41,8 +41,8 @@ export function DashboardHeaderSection({
   addWidgetLabel,
   locale: explicitLocale,
   dateRangeLabel,
-  onAddWidget,
-  onSelectDateRange,
+  onAddWidgetAction,
+  onSelectDateRangeAction,
   className,
 }: DashboardHeaderSectionProps) {
   const locale: HeaderLocale = explicitLocale ?? "id";
@@ -68,10 +68,10 @@ export function DashboardHeaderSection({
       </div>
 
       <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto sm:flex-nowrap">
-        {onAddWidget ? (
+        {onAddWidgetAction ? (
           <button
             type="button"
-            onClick={onAddWidget}
+            onClick={onAddWidgetAction}
             className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full border border-border bg-surface px-4 text-sm font-medium leading-[1.366] text-foreground transition-colors hover:bg-surface-2 active:bg-primary-soft sm:flex-none"
           >
             <PlusIcon />
@@ -89,7 +89,7 @@ export function DashboardHeaderSection({
 
         <button
           type="button"
-          onClick={onSelectDateRange}
+          onClick={onSelectDateRangeAction}
           className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full border border-primary bg-primary px-4 text-sm font-medium leading-[1.366] text-white transition-colors hover:bg-primary-hover active:bg-(--blue-800) sm:flex-none"
         >
           <CalendarIcon />

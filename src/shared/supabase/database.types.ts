@@ -342,6 +342,8 @@ export type Database = {
           monthly_report: boolean;
           compact_mode: boolean;
           daily_transaction_limit: number;
+          monthly_debt_installment: number;
+          emergency_fund_balance: number;
           updated_at: string;
         };
         Insert: {
@@ -359,6 +361,8 @@ export type Database = {
           monthly_report?: boolean;
           compact_mode?: boolean;
           daily_transaction_limit?: number;
+          monthly_debt_installment?: number;
+          emergency_fund_balance?: number;
           updated_at?: string;
         };
         Update: {
@@ -376,6 +380,8 @@ export type Database = {
           monthly_report?: boolean;
           compact_mode?: boolean;
           daily_transaction_limit?: number;
+          monthly_debt_installment?: number;
+          emergency_fund_balance?: number;
           updated_at?: string;
         };
         Relationships: [];

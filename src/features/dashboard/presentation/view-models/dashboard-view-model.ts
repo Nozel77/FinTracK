@@ -65,6 +65,18 @@ export type DashboardViewModel = {
     readonly remainingLabel: string;
     readonly progressPct: number;
   };
+  readonly financialHealth: {
+    readonly status: "Sehat" | "Waspada" | "Bahaya";
+    readonly statusLabel: string;
+    readonly debtToIncomeRatioLabel: string;
+    readonly emergencyFundRatioLabel: string;
+    readonly monthlyDebtInstallmentLabel: string;
+    readonly emergencyFundBalanceLabel: string;
+    readonly monthlyIncomeLabel: string;
+    readonly monthlyExpenseLabel: string;
+    readonly debtToIncomeHealthy: boolean;
+    readonly emergencyFundHealthy: boolean;
+  };
 };
 
 export function toDashboardViewModel(
@@ -109,6 +121,7 @@ export function toDashboardViewModel(
       snapshot.dailyTransactionLimit.used,
       snapshot.dailyTransactionLimit.limit,
     ),
+    financialHealth: mapFinancialHealthToViewModel(snapshot),
   };
 }
 
@@ -168,6 +181,67 @@ function mapDailyLimitToViewModel(used: Money, limit: Money) {
   };
 }
 
+function mapFinancialHealthToViewModel(snapshot: DashboardSnapshot) {
+  const primaryCurrency = snapshot.balance.monthlyIncome.currency;
+  const fallbackInput = {
+    monthlyIncome: snapshot.balance.monthlyIncome,
+    monthlyExpense: snapshot.balance.monthlyExpense,
+    monthlyDebtInstallment: { amount: 0, currency: primaryCurrency },
+    emergencyFundBalance: { amount: 0, currency: primaryCurrency },
+  };
+
+  const input = snapshot.financialHealth?.input ?? fallbackInput;
+
+  const derivedDebtToIncome =
+    input.monthlyIncome.amount > 0
+      ? (input.monthlyDebtInstallment.amount / input.monthlyIncome.amount) * 100
+      : input.monthlyDebtInstallment.amount > 0
+        ? Number.POSITIVE_INFINITY
+        : 0;
+
+  const derivedEmergencyFundMonths =
+    input.monthlyExpense.amount > 0
+      ? input.emergencyFundBalance.amount / input.monthlyExpense.amount
+      : input.emergencyFundBalance.amount > 0
+        ? Number.POSITIVE_INFINITY
+        : 0;
+
+  const debtToIncomeRatioPct =
+    snapshot.financialHealth?.ratios.debtToIncomeRatioPct ??
+    derivedDebtToIncome;
+  const emergencyFundRatioMonths =
+    snapshot.financialHealth?.ratios.emergencyFundRatioMonths ??
+    derivedEmergencyFundMonths;
+
+  const debtToIncomeHealthy =
+    snapshot.financialHealth?.evaluation.debtToIncomeHealthy ??
+    debtToIncomeRatioPct <= 35;
+  const emergencyFundHealthy =
+    snapshot.financialHealth?.evaluation.emergencyFundHealthy ??
+    emergencyFundRatioMonths >= 3;
+
+  const status =
+    snapshot.financialHealth?.status ??
+    (debtToIncomeHealthy && emergencyFundHealthy
+      ? "Sehat"
+      : !debtToIncomeHealthy && !emergencyFundHealthy
+        ? "Bahaya"
+        : "Waspada");
+
+  return {
+    status,
+    statusLabel: status,
+    debtToIncomeRatioLabel: formatRatioValue(debtToIncomeRatioPct, "%"),
+    emergencyFundRatioLabel: formatRatioValue(emergencyFundRatioMonths, "x"),
+    monthlyDebtInstallmentLabel: formatMoney(input.monthlyDebtInstallment),
+    emergencyFundBalanceLabel: formatMoney(input.emergencyFundBalance),
+    monthlyIncomeLabel: formatMoney(input.monthlyIncome),
+    monthlyExpenseLabel: formatMoney(input.monthlyExpense),
+    debtToIncomeHealthy,
+    emergencyFundHealthy,
+  };
+}
+
 function getMaxTrendValue(points: ReadonlyArray<WeeklyTrendPoint>): number {
   const values: number[] = [];
 
@@ -193,6 +267,15 @@ function toPct(value: number, max: number): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function formatRatioValue(value: number, suffix: "%" | "x"): string {
+  if (!Number.isFinite(value)) {
+    return suffix === "%" ? "∞%" : "∞x";
+  }
+
+  const rounded = Math.round(value * 100) / 100;
+  return suffix === "%" ? `${rounded}%` : `${rounded}x`;
 }
 
 function transactionDirectionToTone(

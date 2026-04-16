@@ -4,10 +4,8 @@ import { ActionPill } from "../components/action-pill";
 import { DashboardCard } from "../components/dashboard-card";
 import { GoalItem } from "../components/goal-item";
 import { PaginationControls } from "../components/pagination-controls";
-import {
-  SidebarPageShell,
-  type SidebarPageThemeOverrides,
-} from "./sidebar-page-shell";
+import { SidebarPageShell } from "./sidebar-page-shell";
+import { LIGHT_BLUE_THEME } from "./light-blue-theme";
 import type { DashboardViewModel } from "../view-models/dashboard-view-model";
 import type { Locale } from "@/src/shared/i18n/locale";
 
@@ -17,6 +15,8 @@ export type GoalsScreenProps = {
   readonly onCreateGoal?: MouseEventHandler<HTMLButtonElement>;
   readonly onAdjustPlanForGoal?: (goalId: string) => void;
   readonly onSelectDateRange?: MouseEventHandler<HTMLButtonElement>;
+  readonly isSectionLoading?: boolean;
+  readonly loadingLabel?: string;
 };
 
 type ActionableGoal = {
@@ -31,20 +31,7 @@ type ActionableGoal = {
   readonly urgencyScore: number;
 };
 
-const goalsTheme: SidebarPageThemeOverrides = {
-  background: "#f9f7ff",
-  surface: "#ffffff",
-  surface2: "#f2edff",
-  border: "#e3dafc",
-  foreground: "#1f1147",
-  muted: "#6f62a5",
-  primary: "#7c3aed",
-  primaryHover: "#6d28d9",
-  primarySoft: "#ede9fe",
-  accent: "#8b5cf6",
-  success: "#16a34a",
-  danger: "#ef4444",
-};
+const goalsTheme = LIGHT_BLUE_THEME;
 
 const ACTION_WINDOW_DAYS = 90;
 
@@ -54,6 +41,8 @@ export function GoalsScreen({
   onCreateGoal,
   onAdjustPlanForGoal,
   onSelectDateRange,
+  isSectionLoading = false,
+  loadingLabel = "Memuat tujuan...",
 }: GoalsScreenProps) {
   const copy = {
     title: "Tujuan",
@@ -158,6 +147,8 @@ export function GoalsScreen({
       title={copy.title}
       subtitle={copy.subtitle}
       badgeLabel={copy.badgeLabel}
+      isSectionLoading={isSectionLoading}
+      loadingLabel={loadingLabel}
       themeOverrides={goalsTheme}
       headerActions={
         <>
@@ -220,10 +211,10 @@ export function GoalsScreen({
 
                   const statusClassName =
                     goal.daysUntilDeadline < 0
-                      ? "bg-red-500/10 text-red-600"
+                      ? "bg-danger/10 text-danger"
                       : goal.daysUntilDeadline <= 30
-                        ? "bg-amber-500/10 text-amber-700"
-                        : "bg-emerald-500/10 text-emerald-700";
+                        ? "bg-accent/15 text-accent"
+                        : "bg-success/10 text-success";
 
                   return (
                     <li

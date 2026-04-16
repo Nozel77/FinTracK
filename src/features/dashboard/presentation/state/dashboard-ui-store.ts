@@ -28,6 +28,8 @@ export type SettingsPreferences = {
   language: string;
   startOfWeek: "Monday" | "Sunday";
   dailyTransactionLimit?: number | string;
+  monthlyDebtInstallment?: number | string;
+  emergencyFundBalance?: number | string;
 };
 
 export type SettingsToggleId =
@@ -94,6 +96,8 @@ export const DEFAULT_PREFERENCES: SettingsPreferences = {
   language: "Bahasa Indonesia",
   startOfWeek: "Monday",
   dailyTransactionLimit: 10_000_000,
+  monthlyDebtInstallment: 0,
+  emergencyFundBalance: 0,
 };
 
 export const DEFAULT_TOGGLES: SettingsToggles = [

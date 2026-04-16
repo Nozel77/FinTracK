@@ -4,6 +4,7 @@ import type {
   DateRange,
   Money,
 } from "@/src/features/dashboard/domain/dashboard";
+import { calculateFinancialHealth } from "@/src/features/dashboard/domain/financial-health";
 
 const USD = "IDR" as const;
 
@@ -14,6 +15,15 @@ const money = (amount: number): Money => ({
 
 export class StaticDashboardRepository implements DashboardRepository {
   async getSnapshot(range: DateRange): Promise<DashboardSnapshot> {
+    const monthlyDebtInstallment = money(12_500_000);
+    const emergencyFundBalance = money(120_000_000);
+    const financialHealth = calculateFinancialHealth({
+      monthlyIncome: money(84_200_000),
+      monthlyExpense: money(31_600_000),
+      monthlyDebtInstallment,
+      emergencyFundBalance,
+    });
+
     return {
       range,
       balance: {
@@ -128,6 +138,7 @@ export class StaticDashboardRepository implements DashboardRepository {
         used: money(4200000),
         limit: money(10000000),
       },
+      financialHealth,
     };
   }
 }

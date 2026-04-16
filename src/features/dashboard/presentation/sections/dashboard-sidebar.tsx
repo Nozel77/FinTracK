@@ -140,17 +140,6 @@ export function DashboardSidebar({
 
   useEffect(() => {
     try {
-      if (!isThemeControlled) {
-        const storedTheme = window.localStorage.getItem(
-          SIDEBAR_THEME_STORAGE_KEY,
-        );
-        if (storedTheme === "dark" || storedTheme === "light") {
-          setLocalThemeMode(storedTheme);
-        } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-          setLocalThemeMode("dark");
-        }
-      }
-
       if (!isCollapsedControlled) {
         const storedCollapsed = window.localStorage.getItem(
           SIDEBAR_COLLAPSED_STORAGE_KEY,
@@ -159,6 +148,17 @@ export function DashboardSidebar({
           setInternalCollapsed(true);
         } else if (storedCollapsed === "false") {
           setInternalCollapsed(false);
+        }
+      }
+
+      if (!isThemeControlled) {
+        const storedTheme = window.localStorage.getItem(
+          SIDEBAR_THEME_STORAGE_KEY,
+        );
+        if (storedTheme === "dark" || storedTheme === "light") {
+          setLocalThemeMode(storedTheme);
+        } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+          setLocalThemeMode("dark");
         }
       }
 
@@ -220,11 +220,15 @@ export function DashboardSidebar({
   return (
     <aside
       className={cn(
-        "peer/sidebar fixed left-6 top-6 z-20 flex h-[calc(100vh-3rem)] flex-col overflow-hidden rounded-[20px] border border-border bg-surface px-4 py-6 text-foreground shadow-sm transition-[width] duration-200",
+        "peer/sidebar fixed left-6 top-6 z-20 flex h-[calc(100vh-3rem)] flex-col overflow-hidden rounded-[20px] border border-border bg-surface px-4 py-6 text-foreground shadow-sm",
+        hasLoadedPreference
+          ? "transition-[width] duration-200"
+          : "transition-none",
         isCollapsed ? "w-21 min-w-21 max-w-21" : "w-62 min-w-62 max-w-62",
         className,
       )}
       data-collapsed={isCollapsed ? "true" : "false"}
+      data-preference-ready={hasLoadedPreference ? "true" : "false"}
       aria-label={copy.navigationLabel}
     >
       <header

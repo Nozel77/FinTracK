@@ -4,10 +4,8 @@ import type { ChangeEventHandler, MouseEventHandler } from "react";
 
 import { ActionPill } from "../components/action-pill";
 import { DashboardCard } from "../components/dashboard-card";
-import {
-  SidebarPageShell,
-  type SidebarPageThemeOverrides,
-} from "./sidebar-page-shell";
+import { SidebarPageShell } from "./sidebar-page-shell";
+import { LIGHT_BLUE_THEME } from "./light-blue-theme";
 import type { DashboardViewModel } from "../view-models/dashboard-view-model";
 import type { Locale } from "@/src/shared/i18n/locale";
 
@@ -24,6 +22,8 @@ type SettingsPreferences = {
   readonly language: string;
   readonly startOfWeek: "Monday" | "Sunday";
   readonly dailyTransactionLimit?: number | string;
+  readonly monthlyDebtInstallment?: number | string;
+  readonly emergencyFundBalance?: number | string;
 };
 
 type PreferenceToggle = {
@@ -47,22 +47,10 @@ export type SettingsScreenProps = {
   >;
   readonly onTogglePreference?: (toggleId: string) => void;
   readonly onResetSessions?: MouseEventHandler<HTMLButtonElement>;
+  readonly isSectionLoading?: boolean;
 };
 
-const settingsTheme: SidebarPageThemeOverrides = {
-  background: "#f8fafc",
-  surface: "#ffffff",
-  surface2: "#f1f5f9",
-  border: "#cbd5e1",
-  foreground: "#0f172a",
-  muted: "#475569",
-  primary: "#334155",
-  primaryHover: "#1e293b",
-  primarySoft: "#e2e8f0",
-  accent: "#64748b",
-  success: "#16a34a",
-  danger: "#dc2626",
-};
+const settingsTheme = LIGHT_BLUE_THEME;
 
 const defaultProfile: SettingsProfile = {
   fullName: "Alex Morgan",
@@ -77,6 +65,8 @@ const defaultPreferences: SettingsPreferences = {
   language: "Bahasa Indonesia",
   startOfWeek: "Monday",
   dailyTransactionLimit: 10000000,
+  monthlyDebtInstallment: 0,
+  emergencyFundBalance: 0,
 };
 
 const defaultToggles: ReadonlyArray<PreferenceToggle> = [
@@ -110,7 +100,6 @@ const defaultToggles: ReadonlyArray<PreferenceToggle> = [
 
 export function SettingsScreen({
   viewModel,
-  locale: _explicitLocale,
   profile = defaultProfile,
   preferences = defaultPreferences,
   toggles = defaultToggles,
@@ -120,9 +109,8 @@ export function SettingsScreen({
   onPreferenceChange,
   onTogglePreference,
   onResetSessions,
+  isSectionLoading = false,
 }: SettingsScreenProps) {
-  const locale: Locale = "id";
-
   const copy = {
     title: "Pengaturan",
     subtitle:
@@ -147,6 +135,8 @@ export function SettingsScreen({
     timezone: "Zona waktu",
     startOfWeek: "Awal minggu",
     dailyTransactionLimit: "Batas transaksi harian",
+    monthlyDebtInstallment: "Nominal cicilan bulanan",
+    emergencyFundBalance: "Saldo dana darurat",
     activeSessions: "Sesi aktif",
     activeSessionsMeta: "3 perangkat masuk • Aktivitas terakhir hari ini",
     resetAllSessions: "Reset semua sesi",
@@ -195,6 +185,7 @@ export function SettingsScreen({
       subtitle={copy.subtitle}
       badgeLabel={copy.badgeLabel}
       themeOverrides={settingsTheme}
+      isSectionLoading={isSectionLoading}
       headerActions={
         <>
           <ActionPill
@@ -331,6 +322,20 @@ export function SettingsScreen({
                 label={copy.dailyTransactionLimit}
                 value={preferences.dailyTransactionLimit ?? ""}
                 placeholder="Contoh: 10000000"
+                onChange={onPreferenceChange}
+              />
+              <LimitInputField
+                id="monthlyDebtInstallment"
+                label={copy.monthlyDebtInstallment}
+                value={preferences.monthlyDebtInstallment ?? ""}
+                placeholder="Contoh: 1500000"
+                onChange={onPreferenceChange}
+              />
+              <LimitInputField
+                id="emergencyFundBalance"
+                label={copy.emergencyFundBalance}
+                value={preferences.emergencyFundBalance ?? ""}
+                placeholder="Contoh: 30000000"
                 onChange={onPreferenceChange}
               />
             </div>
