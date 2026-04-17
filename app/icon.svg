@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="FinTracK app icon">
+  <defs>
+    <linearGradient id="bg" x1="24" y1="16" x2="232" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#1E3A8A" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <rect x="16" y="16" width="224" height="224" rx="52" fill="url(#bg)" filter="url(#shadow)"/>
+
+  <!-- Dashboard frame -->
+  <rect x="56" y="56" width="144" height="144" rx="24" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.22)" stroke-width="2"/>
+
+  <!-- Sidebar / chart guides -->
+  <path d="M84 84V172" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round"/>
+  <path d="M84 84H152" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round"/>
+  <path d="M84 124H136" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round"/>
+
+  <!-- Trend line -->
+  <path d="M112 156L142 126L164 148L190 100" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Accent dots -->
+  <circle cx="112" cy="156" r="5.5" fill="#FFFFFF"/>
+  <circle cx="142" cy="126" r="5.5" fill="#FFFFFF"/>
+  <circle cx="164" cy="148" r="5.5" fill="#FFFFFF"/>
+  <circle cx="190" cy="100" r="5.5" fill="#FFFFFF"/>
+</svg>
