@@ -1124,7 +1124,7 @@ export function DashboardClientScreen({
         category: "Subscription",
         direction: "expense",
         amount,
-        occurredAt: new Date(`${debitDate}T08:00:00.000Z`).toISOString(),
+        occurredAt: new Date(`${debitDate}T05:00:00.000Z`).toISOString(),
       });
       closeDialog();
     },
@@ -1159,7 +1159,7 @@ export function DashboardClientScreen({
         category,
         direction: "expense",
         amount,
-        occurredAt: new Date(`${dueDate}T08:00:00.000Z`).toISOString(),
+        occurredAt: new Date(`${dueDate}T05:00:00.000Z`).toISOString(),
       });
       closeDialog();
     },
@@ -1220,7 +1220,7 @@ export function DashboardClientScreen({
 
       const expectedDate = toIsoDate(values.expectedDate ?? "");
       const occurredAt = expectedDate
-        ? new Date(`${expectedDate}T08:00:00.000Z`).toISOString()
+        ? new Date(`${expectedDate}T05:00:00.000Z`).toISOString()
         : new Date().toISOString();
 
       setDialogError("");

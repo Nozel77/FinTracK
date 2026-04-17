@@ -25,7 +25,8 @@ export type DashboardViewModel = {
     readonly tone: "outline" | "primary";
   }>;
   readonly weeklyTrend: {
-    readonly maxValue: number;
+    readonly incomeMaxValue: number;
+    readonly expenseMaxValue: number;
     readonly items: ReadonlyArray<{
       readonly label: string;
       readonly incomeLabel: string;
@@ -82,7 +83,8 @@ export type DashboardViewModel = {
 export function toDashboardViewModel(
   snapshot: DashboardSnapshot,
 ): DashboardViewModel {
-  const maxTrendValue = getMaxTrendValue(snapshot.weeklyTrend);
+  const incomeMaxTrendValue = getMaxIncomeTrendValue(snapshot.weeklyTrend);
+  const expenseMaxTrendValue = getMaxExpenseTrendValue(snapshot.weeklyTrend);
 
   return {
     heading: {
@@ -102,9 +104,14 @@ export function toDashboardViewModel(
       tone: shortcut.isPrimary ? "primary" : "outline",
     })),
     weeklyTrend: {
-      maxValue: maxTrendValue,
+      incomeMaxValue: incomeMaxTrendValue,
+      expenseMaxValue: expenseMaxTrendValue,
       items: snapshot.weeklyTrend.map((point) =>
-        mapTrendPointToViewModel(point, maxTrendValue),
+        mapTrendPointToViewModel(
+          point,
+          incomeMaxTrendValue,
+          expenseMaxTrendValue,
+        ),
       ),
     },
     spendingBreakdown: snapshot.spendingBreakdown.map((item) => ({
@@ -125,7 +132,11 @@ export function toDashboardViewModel(
   };
 }
 
-function mapTrendPointToViewModel(point: WeeklyTrendPoint, max: number) {
+function mapTrendPointToViewModel(
+  point: WeeklyTrendPoint,
+  incomeMax: number,
+  expenseMax: number,
+) {
   const incomeValue = Math.max(0, point.income.amount);
   const expenseValue = Math.max(0, point.expense.amount);
 
@@ -133,8 +144,8 @@ function mapTrendPointToViewModel(point: WeeklyTrendPoint, max: number) {
     label: point.label,
     incomeLabel: formatMoney(point.income),
     expenseLabel: formatMoney(point.expense),
-    incomeHeightPct: toPct(incomeValue, max),
-    expenseHeightPct: toPct(expenseValue, max),
+    incomeHeightPct: toPct(incomeValue, incomeMax),
+    expenseHeightPct: toPct(expenseValue, expenseMax),
   };
 }
 
@@ -242,16 +253,17 @@ function mapFinancialHealthToViewModel(snapshot: DashboardSnapshot) {
   };
 }
 
-function getMaxTrendValue(points: ReadonlyArray<WeeklyTrendPoint>): number {
-  const values: number[] = [];
+function getMaxIncomeTrendValue(
+  points: ReadonlyArray<WeeklyTrendPoint>,
+): number {
+  const values = points.map((point) => Math.max(0, point.income.amount));
+  return Math.max(1, ...values);
+}
 
-  for (const point of points) {
-    values.push(
-      Math.max(0, point.income.amount),
-      Math.max(0, point.expense.amount),
-    );
-  }
-
+function getMaxExpenseTrendValue(
+  points: ReadonlyArray<WeeklyTrendPoint>,
+): number {
+  const values = points.map((point) => Math.max(0, point.expense.amount));
   return Math.max(1, ...values);
 }
 
@@ -302,20 +314,33 @@ export function formatMoney(money: Money): string {
   }).format(money.amount);
 }
 
-export function formatDateRange(fromISO: string, toISO: string): string {
-  const from = new Date(fromISO);
-  const to = new Date(toISO);
+const JAKARTA_TIMEZONE = "Asia/Jakarta";
 
-  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+function parseISODateInJakarta(isoDate: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
+
+  const date = new Date(`${isoDate}T12:00:00+07:00`);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date;
+}
+
+export function formatDateRange(fromISO: string, toISO: string): string {
+  const from = parseISODateInJakarta(fromISO);
+  const to = parseISODateInJakarta(toISO);
+
+  if (!from || !to) {
     return `${fromISO} - ${toISO}`;
   }
 
   const fromText = new Intl.DateTimeFormat("id-ID", {
+    timeZone: JAKARTA_TIMEZONE,
     month: "short",
     day: "2-digit",
   }).format(from);
 
   const toText = new Intl.DateTimeFormat("id-ID", {
+    timeZone: JAKARTA_TIMEZONE,
     month: "short",
     day: "2-digit",
   }).format(to);
@@ -324,13 +349,14 @@ export function formatDateRange(fromISO: string, toISO: string): string {
 }
 
 export function formatLongDate(isoDate: string): string {
-  const date = new Date(isoDate);
+  const date = parseISODateInJakarta(isoDate);
 
-  if (Number.isNaN(date.getTime())) {
+  if (!date) {
     return isoDate;
   }
 
   return new Intl.DateTimeFormat("id-ID", {
+    timeZone: JAKARTA_TIMEZONE,
     month: "long",
     day: "numeric",
     year: "numeric",
@@ -345,6 +371,7 @@ export function formatDateTime(isoDateTime: string): string {
   }
 
   return new Intl.DateTimeFormat("id-ID", {
+    timeZone: JAKARTA_TIMEZONE,
     month: "short",
     day: "numeric",
     hour: "2-digit",

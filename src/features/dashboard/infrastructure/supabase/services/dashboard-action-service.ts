@@ -124,6 +124,13 @@ const DEFAULT_CURRENCY = "IDR";
 const DEFAULT_TIMEZONE = "UTC+07:00 (Jakarta)";
 const DEFAULT_LANGUAGE = "English (US)";
 const DEFAULT_DAILY_TRANSACTION_LIMIT = 10_000_000;
+const JAKARTA_TIMEZONE = "Asia/Jakarta";
+const JAKARTA_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: JAKARTA_TIMEZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
 
 export class DashboardActionService {
   private readonly userId?: string;
@@ -626,7 +633,7 @@ export class DashboardActionService {
     amount: number,
     occurredAt: string,
   ): Promise<void> {
-    const date = occurredAt.slice(0, 10);
+    const date = toJakartaISODate(occurredAt);
 
     const [
       { data: existing, error: readError },
@@ -680,7 +687,7 @@ export class DashboardActionService {
     amount: number,
     occurredAt: string,
   ): Promise<void> {
-    const date = occurredAt.slice(0, 10);
+    const date = toJakartaISODate(occurredAt);
 
     const [
       { data: existing, error: readError },
@@ -874,7 +881,7 @@ function normalizeISODate(value: string): string {
       `[dashboard-action-service] Invalid date value "${value}". Expected an ISO-compatible date.`,
     );
   }
-  return parsed.toISOString().slice(0, 10);
+  return toJakartaISODate(parsed.toISOString());
 }
 
 function normalizeISODateTime(value?: string): string {
@@ -926,6 +933,28 @@ function withDebtStatusSuffix(title: string, status: PaymentStatus): string {
     .trim();
 
   return `${baseTitle} (${status === "paid" ? "Lunas" : "Belum Lunas"})`;
+}
+
+function toJakartaISODate(isoDateTime: string): string {
+  const parsed = new Date(isoDateTime);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(
+      `[dashboard-action-service] Invalid datetime value "${isoDateTime}". Expected an ISO-compatible datetime.`,
+    );
+  }
+
+  const parts = JAKARTA_DATE_FORMATTER.formatToParts(parsed);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  if (!year || !month || !day) {
+    throw new Error(
+      "[dashboard-action-service] Failed to resolve Asia/Jakarta date parts.",
+    );
+  }
+
+  return `${year}-${month}-${day}`;
 }
 
 function nowIso(): string {

@@ -198,7 +198,7 @@ export function createDashboardUiStore({
       from: initialFrom,
       to: initialTo,
     },
-    quickRangePreset: "today",
+    quickRangePreset: "week",
     pagination: {
       recentTransactionsPage: 1,
       goalsPage: 1,

@@ -21,8 +21,6 @@ import {
 import { resolveDashboardUserId } from "./dashboard-user";
 
 type ShortcutRow = Tables<"action_shortcuts">;
-type WeeklyTrendRow = Tables<"weekly_trend_points">;
-type SpendingBreakdownRow = Tables<"spending_breakdown_items">;
 type FinancialGoalRow = Tables<"financial_goals">;
 type TransactionRow = Tables<"transactions">;
 type UserSettingsRow = Tables<"user_settings">;
@@ -34,6 +32,17 @@ type SupabaseDashboardRepositoryOptions = {
 
 const DEFAULT_CURRENCY = "IDR" as const;
 const DEFAULT_DAILY_TRANSACTION_LIMIT = 10_000_000;
+const JAKARTA_TIMEZONE = "Asia/Jakarta";
+const JAKARTA_WEEKDAY_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: JAKARTA_TIMEZONE,
+  weekday: "short",
+});
+const JAKARTA_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: JAKARTA_TIMEZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
 
 export class SupabaseDashboardRepository implements DashboardRepository {
   private readonly userId?: string;
@@ -94,38 +103,19 @@ export class SupabaseDashboardRepository implements DashboardRepository {
     range: DateRange,
     transactions: ReadonlyArray<Transaction>,
   ) {
-    const { data, error } = await client
-      .from("balance_summaries")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("period_from", range.from)
-      .eq("period_to", range.to)
-      .maybeSingle();
-
-    if (error) {
-      throw new Error(
-        `[supabase-dashboard-repository] Failed to load balance summary: ${error.message}`,
-      );
-    }
-
-    if (data) {
-      return {
-        totalBalance: toMoney(data.total_balance, data.currency),
-        monthlyIncome: toMoney(data.monthly_income, data.currency),
-        monthlyExpense: toMoney(data.monthly_expense, data.currency),
-        availableToSpend: toMoney(data.available_to_spend, data.currency),
-      };
-    }
-
     const monthlyIncome = sumByDirection(transactions, "income");
     const monthlyExpense = sumByDirection(transactions, "expense");
-    const available = Math.max(0, monthlyIncome - monthlyExpense);
+    const cumulativeBalance = await this.fetchCumulativeBalanceFromTransactions(
+      client,
+      userId,
+      range.to,
+    );
 
     return {
-      totalBalance: toMoney(available),
+      totalBalance: toMoney(cumulativeBalance),
       monthlyIncome: toMoney(monthlyIncome),
       monthlyExpense: toMoney(monthlyExpense),
-      availableToSpend: toMoney(available),
+      availableToSpend: toMoney(cumulativeBalance),
     };
   }
 
@@ -160,65 +150,20 @@ export class SupabaseDashboardRepository implements DashboardRepository {
   }
 
   private async fetchWeeklyTrend(
-    client: TypedSupabaseServerClient,
-    userId: string,
+    _client: TypedSupabaseServerClient,
+    _userId: string,
     range: DateRange,
     transactions: ReadonlyArray<Transaction>,
   ): Promise<ReadonlyArray<WeeklyTrendPoint>> {
-    const { data, error } = await client
-      .from("weekly_trend_points")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("period_from", range.from)
-      .eq("period_to", range.to)
-      .order("sort_order", { ascending: true });
-
-    if (error) {
-      throw new Error(
-        `[supabase-dashboard-repository] Failed to load weekly trend: ${error.message}`,
-      );
-    }
-
-    if (data && data.length > 0) {
-      return data.map((item: WeeklyTrendRow) => ({
-        label: item.label,
-        income: toMoney(item.income, item.currency),
-        expense: toMoney(item.expense, item.currency),
-      }));
-    }
-
-    return buildWeeklyTrendFromTransactions(transactions);
+    return buildWeeklyTrendFromTransactions(range, transactions);
   }
 
   private async fetchSpendingBreakdown(
-    client: TypedSupabaseServerClient,
-    userId: string,
-    range: DateRange,
+    _client: TypedSupabaseServerClient,
+    _userId: string,
+    _range: DateRange,
     transactions: ReadonlyArray<Transaction>,
   ): Promise<ReadonlyArray<SpendingCategoryBreakdown>> {
-    const { data, error } = await client
-      .from("spending_breakdown_items")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("period_from", range.from)
-      .eq("period_to", range.to)
-      .order("sort_order", { ascending: true });
-
-    if (error) {
-      throw new Error(
-        `[supabase-dashboard-repository] Failed to load spending breakdown: ${error.message}`,
-      );
-    }
-
-    if (data && data.length > 0) {
-      return data.map((item: SpendingBreakdownRow) => ({
-        category: item.category,
-        amount: toMoney(item.amount, item.currency),
-        percentage: clamp(item.percentage, 0, 100),
-        colorHex: item.color_hex,
-      }));
-    }
-
     return buildSpendingBreakdownFromTransactions(transactions);
   }
 
@@ -252,12 +197,15 @@ export class SupabaseDashboardRepository implements DashboardRepository {
     userId: string,
     range: DateRange,
   ): Promise<ReadonlyArray<Transaction>> {
+    const fromBoundary = getJakartaUtcDateRange(range.from);
+    const toBoundary = getJakartaUtcDateRange(range.to);
+
     const { data, error } = await client
       .from("transactions")
       .select("*")
       .eq("user_id", userId)
-      .gte("occurred_at", `${range.from}T00:00:00.000Z`)
-      .lte("occurred_at", `${range.to}T23:59:59.999Z`)
+      .gte("occurred_at", fromBoundary.startUtcIso)
+      .lte("occurred_at", toBoundary.endUtcIso)
       .order("occurred_at", { ascending: false });
 
     if (error) {
@@ -274,6 +222,33 @@ export class SupabaseDashboardRepository implements DashboardRepository {
       amount: toMoney(tx.amount, tx.currency),
       occurredAt: tx.occurred_at,
     }));
+  }
+
+  private async fetchCumulativeBalanceFromTransactions(
+    client: TypedSupabaseServerClient,
+    userId: string,
+    toDate: string,
+  ): Promise<number> {
+    const toBoundary = getJakartaUtcDateRange(toDate);
+
+    const { data, error } = await client
+      .from("transactions")
+      .select("amount,direction")
+      .eq("user_id", userId)
+      .lte("occurred_at", toBoundary.endUtcIso);
+
+    if (error) {
+      throw new Error(
+        `[supabase-dashboard-repository] Failed to load cumulative balance transactions: ${error.message}`,
+      );
+    }
+
+    return (data ?? []).reduce((sum, tx) => {
+      const direction = tx.direction as TransactionDirection;
+      if (direction === "income") return sum + tx.amount;
+      if (direction === "expense") return sum - tx.amount;
+      return sum;
+    }, 0);
   }
 
   private async fetchDailyLimit(
@@ -326,7 +301,8 @@ export class SupabaseDashboardRepository implements DashboardRepository {
     const used = transactions
       .filter(
         (tx) =>
-          tx.direction === "expense" && tx.occurredAt.startsWith(range.to),
+          tx.direction === "expense" &&
+          toJakartaIsoDate(tx.occurredAt) === range.to,
       )
       .reduce((sum, tx) => sum + tx.amount.amount, 0);
 
@@ -417,36 +393,116 @@ function sumByDirection(
 }
 
 function buildWeeklyTrendFromTransactions(
+  range: DateRange,
   transactions: ReadonlyArray<Transaction>,
 ): ReadonlyArray<WeeklyTrendPoint> {
-  const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+  const dayKeys = buildDateRangeDays(range.from);
 
-  const map: Record<
-    (typeof labels)[number],
-    { income: number; expense: number }
-  > = {
-    Mon: { income: 0, expense: 0 },
-    Tue: { income: 0, expense: 0 },
-    Wed: { income: 0, expense: 0 },
-    Thu: { income: 0, expense: 0 },
-    Fri: { income: 0, expense: 0 },
-    Sat: { income: 0, expense: 0 },
-    Sun: { income: 0, expense: 0 },
-  };
+  const map = new Map<
+    string,
+    { label: string; income: number; expense: number }
+  >();
 
-  for (const tx of transactions) {
-    const d = new Date(tx.occurredAt);
-    if (Number.isNaN(d.getTime())) continue;
-    const label = labels[(d.getUTCDay() + 6) % 7];
-    if (tx.direction === "income") map[label].income += tx.amount.amount;
-    if (tx.direction === "expense") map[label].expense += tx.amount.amount;
+  for (const dayKey of dayKeys) {
+    const weekday = toJakartaWeekdayLabel(new Date(`${dayKey}T00:00:00+07:00`));
+    map.set(dayKey, {
+      label: weekday ?? dayKey,
+      income: 0,
+      expense: 0,
+    });
   }
 
-  return labels.map((label) => ({
-    label,
-    income: toMoney(map[label].income),
-    expense: toMoney(map[label].expense),
-  }));
+  for (const tx of transactions) {
+    const normalizedCategory = tx.category.trim().toLowerCase();
+    if (normalizedCategory === "setup") continue;
+
+    const dayKey = toJakartaIsoDate(tx.occurredAt);
+    if (!dayKey) continue;
+
+    const bucket = map.get(dayKey);
+    if (!bucket) continue;
+
+    if (tx.direction === "income") bucket.income += tx.amount.amount;
+    if (tx.direction === "expense") bucket.expense += tx.amount.amount;
+  }
+
+  return dayKeys.map((dayKey) => {
+    const point = map.get(dayKey);
+
+    return {
+      label: point?.label ?? dayKey,
+      income: toMoney(point?.income ?? 0),
+      expense: toMoney(point?.expense ?? 0),
+    };
+  });
+}
+
+function toJakartaWeekdayLabel(
+  date: Date,
+): "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun" | null {
+  const raw = JAKARTA_WEEKDAY_FORMATTER.format(date);
+
+  if (raw === "Mon") return "Mon";
+  if (raw === "Tue") return "Tue";
+  if (raw === "Wed") return "Wed";
+  if (raw === "Thu") return "Thu";
+  if (raw === "Fri") return "Fri";
+  if (raw === "Sat") return "Sat";
+  if (raw === "Sun") return "Sun";
+
+  return null;
+}
+
+function buildDateRangeDays(fromISO: string): ReadonlyArray<string> {
+  const from = new Date(`${fromISO}T00:00:00Z`);
+
+  if (Number.isNaN(from.getTime())) {
+    return [];
+  }
+
+  const day = from.getUTCDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const weekStart = addUtcDays(from, mondayOffset);
+
+  const days: string[] = [];
+  for (let index = 0; index < 7; index += 1) {
+    days.push(toUtcIsoDate(addUtcDays(weekStart, index)));
+  }
+
+  return days;
+}
+
+function addUtcDays(date: Date, days: number): Date {
+  return new Date(
+    Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate() + days,
+    ),
+  );
+}
+
+function toUtcIsoDate(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = `${date.getUTCMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getUTCDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function toJakartaIsoDate(isoDateTime: string): string | null {
+  const parsed = new Date(isoDateTime);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return JAKARTA_DATE_FORMATTER.format(parsed);
+}
+
+function getJakartaUtcDateRange(dateISO: string): {
+  startUtcIso: string;
+  endUtcIso: string;
+} {
+  const startUtcIso = new Date(`${dateISO}T00:00:00+07:00`).toISOString();
+  const endUtcIso = new Date(`${dateISO}T23:59:59.999+07:00`).toISOString();
+
+  return { startUtcIso, endUtcIso };
 }
 
 function buildSpendingBreakdownFromTransactions(
@@ -547,8 +603,4 @@ function isMissingOptionalUserSettingsColumnError(message: string): boolean {
   return /column\s+user_settings\.(monthly_debt_installment|emergency_fund_balance)\s+does not exist/i.test(
     message,
   );
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
